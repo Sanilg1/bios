@@ -83,3 +83,43 @@ describe("state snapshots", () => {
     assert.match(logged[0], /State snapshot to .+ failed/);
   });
 });
+
+describe("NamoID callback diagnostics", () => {
+  test("a failed callback says exactly why, without reflecting arbitrary input", async () => {
+    const express = (await import("express")).default;
+    const session = (await import("express-session")).default;
+    const namoid = {
+      hostedAuth: {
+        async start({ redirectUri }) {
+          return { authorizationUrl: "https://namoid.example/authorize", transaction: { state: "s-1", nonce: "n", codeVerifier: "v", redirectUri, createdAt: Date.now() } };
+        },
+      },
+    };
+    const app = express();
+    app.use(session({ secret: "x".repeat(32), resave: false, saveUninitialized: false }));
+    namoidProvider({ clientId: "test", clientSecret: "secret", namoid }).mount(app, { appBaseUrl: "http://127.0.0.1" });
+    const server = await new Promise((resolve) => {
+      const s = app.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const errors = console.error;
+    console.error = () => {};
+    try {
+      const callback = async (query, cookie) => {
+        const res = await fetch(`${base}/api/auth/callback?${query}`, { redirect: "manual", headers: cookie ? { cookie } : {} });
+        return new URL(res.headers.get("location"), base).searchParams.get("auth_error");
+      };
+      assert.equal(await callback("error=access_denied&state=s-1"), "namoid_access_denied");
+      assert.equal(await callback("error=%3Cscript%3E"), "namoid_error", "odd error values never reach the URL");
+      assert.equal(await callback("state=s-1"), "no_code");
+      assert.equal(await callback("code=c&state=s-1"), "no_transaction");
+
+      const login = await fetch(`${base}/api/auth/login`, { method: "POST" });
+      const cookie = login.headers.get("set-cookie").split(";")[0];
+      assert.equal(await callback("code=c&state=wrong", cookie), "state_mismatch");
+    } finally {
+      console.error = errors;
+      server.close();
+    }
+  });
+});

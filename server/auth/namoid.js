@@ -44,16 +44,24 @@ export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDCl
       const transaction = req.session.namoidTransaction;
       delete req.session.namoidTransaction;
 
-      if (
-        errorCode ||
-        !code ||
-        !returnedState ||
-        !transaction ||
-        transaction.state !== returnedState ||
-        Date.now() - transaction.createdAt > TRANSACTION_LIFETIME_MS
-      ) {
+      // Say exactly why a sign-in didn't complete. Only fixed codes reach the URL; NamoID's own
+      // error code is passed on only if it looks like an OAuth error code.
+      let failure = null;
+      if (errorCode) failure = `namoid_${/^[a-z_]{1,40}$/.test(errorCode) ? errorCode : "error"}`;
+      else if (!code) failure = "no_code";
+      else if (!transaction) failure = "no_transaction";
+      else if (!returnedState || transaction.state !== returnedState) failure = "state_mismatch";
+      else if (Date.now() - transaction.createdAt > TRANSACTION_LIFETIME_MS) failure = "expired";
+      if (failure) {
+        console.error("Hosted Auth callback rejected", {
+          failure,
+          error: errorCode,
+          errorDescription: stringQuery(req.query.error_description)?.slice(0, 200) ?? null,
+          queryKeys: Object.keys(req.query),
+          hadTransaction: Boolean(transaction),
+        });
         await saveSession(req);
-        res.redirect(303, "/?auth_error=callback");
+        res.redirect(303, `/?auth_error=${failure}`);
         return;
       }
 
