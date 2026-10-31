@@ -1,0 +1,318 @@
+{
+  "note": "Sample access history from Team Netra's Responsible AI Access Gate. All resources, people, credentials and outputs are mock. Approval ≠ safety.",
+  "generatedBy": "npm run sample-history (fixed clock starting 2026-10-31T09:00:00Z)",
+  "scores": {
+    "maya": {
+      "sub": "persona:maya",
+      "score": 44,
+      "label": null,
+      "factors": [
+        {
+          "delta": -3,
+          "reason": "Denied use attempt on grant_2 (R4)",
+          "at": "2026-10-31T11:00:00Z"
+        },
+        {
+          "delta": -3,
+          "reason": "Denied use attempt on grant_2 (R6)",
+          "at": "2026-11-08T11:00:00Z"
+        }
+      ],
+      "advisory": "Advisory. Based only on history in this app. Reviewers decide."
+    },
+    "kabir": {
+      "sub": "persona:kabir",
+      "score": 21,
+      "label": null,
+      "factors": [
+        {
+          "delta": -3,
+          "reason": "Denied use attempt on grant_5 (R5)",
+          "at": "2026-11-08T11:00:00Z"
+        },
+        {
+          "delta": -3,
+          "reason": "Denied use attempt on grant_5 (R10)",
+          "at": "2026-11-08T11:00:00Z"
+        },
+        {
+          "delta": -3,
+          "reason": "Denied use attempt on grant_5 (R7)",
+          "at": "2026-11-08T14:00:00Z"
+        },
+        {
+          "delta": -20,
+          "reason": "grant_5 was emergency-revoked",
+          "at": "2026-11-08T14:00:00.000Z"
+        }
+      ],
+      "advisory": "Advisory. Based only on history in this app. Reviewers decide."
+    }
+  },
+  "events": [
+    {
+      "seq": 1,
+      "at": "2026-10-31T09:00:00Z",
+      "action": "roles.set",
+      "actorSub": "persona:maya",
+      "allowed": true,
+      "rule": null,
+      "target": "persona:maya",
+      "receipt": "Roles for Maya Rao: [requester] → [requester, manager]. Separation of duties still applies per request.",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 2,
+      "at": "2026-10-31T09:00:00Z",
+      "action": "request.create",
+      "actorSub": "persona:maya",
+      "allowed": true,
+      "rule": null,
+      "receipt": "Submitted req_1: Sentinel (mock sensitive model), evaluation, internal-research, 14 day(s). Needs manager, risk reviewer and resource owner.",
+      "resourceId": "model:sentinel-eval-mock",
+      "requestId": "req_1",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 3,
+      "at": "2026-10-31T09:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:maya",
+      "allowed": false,
+      "rule": "R1",
+      "receipt": "Denied (R1): You submitted req_1, so you can't fill its manager slot, even though you hold that role.",
+      "requestId": "req_1",
+      "resourceId": "model:sentinel-eval-mock",
+      "slot": "manager",
+      "decision": "approve",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 4,
+      "at": "2026-10-31T09:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:guide",
+      "allowed": true,
+      "rule": null,
+      "receipt": "manager approved req_1: \"Evaluation is part of the project plan\". Still waiting on: risk, owner.",
+      "requestId": "req_1",
+      "resourceId": "model:sentinel-eval-mock",
+      "slot": "manager",
+      "decision": "approve",
+      "actorName": "Dr. Anjali Mehta"
+    },
+    {
+      "seq": 5,
+      "at": "2026-10-31T09:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:risk",
+      "allowed": true,
+      "rule": null,
+      "receipt": "risk narrowed (removed purpose internal-research; 14 → 7 days; added no-export) req_1: \"Evaluation only for one week, no export\". Still waiting on: owner.",
+      "requestId": "req_1",
+      "resourceId": "model:sentinel-eval-mock",
+      "slot": "risk",
+      "decision": "narrow",
+      "actorName": "Farhan Ali"
+    },
+    {
+      "seq": 6,
+      "at": "2026-10-31T09:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:ira",
+      "allowed": true,
+      "rule": null,
+      "receipt": "owner approved req_1: \"Model owner OK with narrowed scope\". All three slots decided → grant grant_2 issued until 2026-11-07T09:00:00Z. Authorized under these conditions. This does not mean the use is safe.",
+      "requestId": "req_1",
+      "resourceId": "model:sentinel-eval-mock",
+      "slot": "owner",
+      "decision": "approve",
+      "grantId": "grant_2",
+      "actorName": "Ira Kapoor"
+    },
+    {
+      "seq": 7,
+      "at": "2026-10-31T11:00:00Z",
+      "action": "resource.use",
+      "actorSub": "persona:maya",
+      "allowed": true,
+      "rule": null,
+      "receipt": "Allowed: Sentinel (mock sensitive model) for \"evaluation\" under grant_2 (controls: no-export; expires 2026-11-07T09:00:00Z). Authorized under these conditions. This does not mean the use is safe.",
+      "resourceId": "model:sentinel-eval-mock",
+      "purpose": "evaluation",
+      "grantId": "grant_2",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 8,
+      "at": "2026-10-31T11:00:00Z",
+      "action": "resource.use",
+      "actorSub": "persona:maya",
+      "allowed": false,
+      "rule": "R4",
+      "receipt": "Denied (R4): grant_2 is approved for evaluation; this call was for \"internal-research\".",
+      "resourceId": "model:sentinel-eval-mock",
+      "purpose": "internal-research",
+      "grantId": "grant_2",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 9,
+      "at": "2026-10-31T11:00:00Z",
+      "action": "grant.modify-expiry",
+      "actorSub": "persona:maya",
+      "allowed": false,
+      "rule": "R8",
+      "receipt": "Denied (R8): There is no way to change grant_2's expiry. Ask for more time with a new request (extendsGrantId) that goes through full review.",
+      "grantId": "grant_2",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 10,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "resource.use",
+      "actorSub": "persona:maya",
+      "allowed": false,
+      "rule": "R6",
+      "receipt": "Denied (R6): grant_2 expired at 2026-11-07T09:00:00Z. More time needs a new request.",
+      "resourceId": "model:sentinel-eval-mock",
+      "purpose": "evaluation",
+      "grantId": "grant_2",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 11,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "request.create",
+      "actorSub": "persona:maya",
+      "allowed": true,
+      "rule": null,
+      "receipt": "Submitted req_3: Sentinel (mock sensitive model), evaluation, 3 day(s). Needs manager, risk reviewer and resource owner. This asks for more time on grant_2, so it gets a full review like any new request.",
+      "resourceId": "model:sentinel-eval-mock",
+      "requestId": "req_3",
+      "actorName": "Maya Rao"
+    },
+    {
+      "seq": 12,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "request.create",
+      "actorSub": "persona:kabir",
+      "allowed": true,
+      "rule": null,
+      "receipt": "Submitted req_4: H100 pool (mock, 8 GPUs), fine-tuning, 7 day(s), 8 GPU(s). Needs manager, risk reviewer and resource owner.",
+      "resourceId": "compute:h100-pool-mock",
+      "requestId": "req_4",
+      "actorName": "Kabir Singh"
+    },
+    {
+      "seq": 13,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:guide",
+      "allowed": true,
+      "rule": null,
+      "receipt": "manager approved req_4: \"Supervised thesis work\". Still waiting on: risk, owner.",
+      "requestId": "req_4",
+      "resourceId": "compute:h100-pool-mock",
+      "slot": "manager",
+      "decision": "approve",
+      "actorName": "Dr. Anjali Mehta"
+    },
+    {
+      "seq": 14,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:risk",
+      "allowed": true,
+      "rule": null,
+      "receipt": "risk narrowed (7 → 3 days; added no-network-egress, approved-images-only; 8 → 2 GPUs) req_4: \"Start with 2 GPUs for 3 days, no internet from jobs\". Still waiting on: owner.",
+      "requestId": "req_4",
+      "resourceId": "compute:h100-pool-mock",
+      "slot": "risk",
+      "decision": "narrow",
+      "actorName": "Farhan Ali"
+    },
+    {
+      "seq": 15,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "request.review",
+      "actorSub": "persona:ira",
+      "allowed": true,
+      "rule": null,
+      "receipt": "owner approved req_4: \"Capacity available this week\". All three slots decided → grant grant_5 issued until 2026-11-11T11:00:00Z. Authorized under these conditions. This does not mean the use is safe.",
+      "requestId": "req_4",
+      "resourceId": "compute:h100-pool-mock",
+      "slot": "owner",
+      "decision": "approve",
+      "grantId": "grant_5",
+      "actorName": "Ira Kapoor"
+    },
+    {
+      "seq": 16,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "job.submit",
+      "actorSub": "persona:kabir",
+      "allowed": false,
+      "rule": "R5",
+      "receipt": "Denied (R5): grant_5 allows 2 GPU(s); 0 in use, this job asks for 4.",
+      "purpose": "fine-tuning",
+      "gpus": 4,
+      "grantId": "grant_5",
+      "actorName": "Kabir Singh"
+    },
+    {
+      "seq": 17,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "job.submit",
+      "actorSub": "persona:kabir",
+      "allowed": false,
+      "rule": "R10",
+      "receipt": "Denied (R10): \"random/crypto-miner:latest\" isn't on the approved image list (netra/eval-harness:1.0, netra/finetune-lora:1.0).",
+      "purpose": "fine-tuning",
+      "gpus": 2,
+      "grantId": "grant_5",
+      "actorName": "Kabir Singh"
+    },
+    {
+      "seq": 18,
+      "at": "2026-11-08T11:00:00Z",
+      "action": "job.submit",
+      "actorSub": "persona:kabir",
+      "allowed": true,
+      "rule": null,
+      "receipt": "Allowed: mock job job_6 on 2× H100 for \"fine-tuning\" under grant_5. It will be killed if the grant expires or is revoked. Authorized under these conditions. This does not mean the use is safe.",
+      "purpose": "fine-tuning",
+      "gpus": 2,
+      "grantId": "grant_5",
+      "resourceId": "compute:h100-pool-mock",
+      "jobId": "job_6",
+      "actorName": "Kabir Singh"
+    },
+    {
+      "seq": 19,
+      "at": "2026-11-08T14:00:00Z",
+      "action": "grant.revoke",
+      "actorSub": "persona:risk",
+      "allowed": true,
+      "rule": null,
+      "receipt": "Revoked grant_5 immediately: \"Job tried to reach the internet (demo scenario)\". Killed running job(s) job_6. Every later use is denied (R7).",
+      "grantId": "grant_5",
+      "resourceId": "compute:h100-pool-mock",
+      "requestId": "req_4",
+      "actorName": "Farhan Ali"
+    },
+    {
+      "seq": 20,
+      "at": "2026-11-08T14:00:00Z",
+      "action": "job.submit",
+      "actorSub": "persona:kabir",
+      "allowed": false,
+      "rule": "R7",
+      "receipt": "Denied (R7): grant_5 was revoked by Farhan Ali at 2026-11-08T14:00:00Z: \"Job tried to reach the internet (demo scenario)\".",
+      "purpose": "fine-tuning",
+      "gpus": 1,
+      "grantId": "grant_5",
+      "actorName": "Kabir Singh"
+    }
+  ]
+}
