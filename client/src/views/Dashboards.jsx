@@ -16,7 +16,9 @@ export const DASHBOARDS = [
 export function Dashboard({ role, ctx }) {
   const info = DASHBOARDS.find((d) => d.id === role);
   const data = ctx.dashboards[role];
-  if (!ctx.user.roles.includes(role)) return <Locked info={info} />;
+  // A decided request leaves "waiting on you" at once, so its receipt is kept here instead.
+  const [last, setLast] = useState(null);
+  if (!ctx.user.roles.includes(role)) return <Locked info={info} ctx={ctx} />;
   if (data === undefined) return <p className="muted">Loading…</p>;
   if (data === null) return <p className="muted">This dashboard couldn't load. It retries every few seconds.</p>;
 
@@ -42,9 +44,14 @@ export function Dashboard({ role, ctx }) {
       {role === "owner" && <OwnedResources resources={data.resources} />}
 
       <h3 className="dash-section">Waiting on your {role} decision</h3>
+      {last && (
+        <div className="dash-receipt">
+          <Receipt result={last} />
+        </div>
+      )}
       {data.actionable.length === 0 && <p className="muted">Nothing is waiting on you.</p>}
       {data.actionable.map((r) => (
-        <ReviewCard key={r.id} request={r} ctx={ctx} onlySlot={role} />
+        <ReviewCard key={r.id} request={r} ctx={ctx} onlySlot={role} onDecided={setLast} />
       ))}
 
       {data.yours.length > 0 && (
@@ -52,7 +59,7 @@ export function Dashboard({ role, ctx }) {
           <h3 className="dash-section">Your own requests</h3>
           <p className="note">You can't review your own request, even holding this role. The button is still here so you can see the server refuse it (R1).</p>
           {data.yours.map((r) => (
-            <ReviewCard key={r.id} request={r} ctx={ctx} mine onlySlot={role} />
+            <ReviewCard key={r.id} request={r} ctx={ctx} mine onlySlot={role} onDecided={setLast} />
           ))}
         </>
       )}
@@ -62,7 +69,7 @@ export function Dashboard({ role, ctx }) {
           <h3 className="dash-section">You already decided another slot on these</h3>
           <p className="note">One person fills one slot per request. Trying again is refused (R2).</p>
           {data.otherSlot.map((r) => (
-            <ReviewCard key={r.id} request={r} ctx={ctx} onlySlot={role} />
+            <ReviewCard key={r.id} request={r} ctx={ctx} onlySlot={role} onDecided={setLast} />
           ))}
         </>
       )}
@@ -170,19 +177,29 @@ function RecentDenials({ events }) {
 }
 
 // Shown when the signed-in user lacks the role. It asks the server anyway, so the refusal is real.
-function Locked({ info }) {
+// If the server says yes, the role was granted since this page loaded: reload the session instead.
+function Locked({ info, ctx }) {
   const [result, setResult] = useState(null);
+  const { refresh } = ctx;
   useEffect(() => {
-    api(`/api/dashboards/${info.id}`).then(setResult);
+    let live = true;
+    api(`/api/dashboards/${info.id}`).then((res) => {
+      if (!live) return;
+      if (res.ok) refresh();
+      else setResult(res);
+    });
+    return () => {
+      live = false;
+    };
   }, [info.id]);
   return (
     <section className="card">
       <h2>{info.title}</h2>
       <p className="muted">
-        This dashboard is for the <strong>{info.id}</strong> role. You're signed in through NamoID, but you don't hold that role, so the server won't build it for you.
+        This dashboard is for the <strong>{info.id}</strong> role. You're signed in, but you don't hold that role, so the server won't build it for you.
       </p>
       <Receipt result={result} />
-      <p className="small muted">In demo mode you can pick your roles under Demo controls. Every change is logged.</p>
+      <p className="small muted">Roles come from your organisation's role directory, matched to your NamoID account. They can't be picked in the app.</p>
     </section>
   );
 }

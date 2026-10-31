@@ -19,6 +19,10 @@ services:
         value: "true"
       - key: TRUST_PROXY
         value: "1"
+      # Who holds which reviewer role: NamoID-verified email → roles. These are the team's NamoID
+      # managed test users (Test environment). Everyone else who signs in is a requester.
+      - key: ROLE_DIRECTORY
+        value: '{"manager+namoid_test_zedaguvc@test.namoid.in":["manager"],"risk.reviewer+namoid_test_649shn79@test.namoid.in":["risk"],"res.owner+namoid_test_4ya965sp@test.namoid.in":["owner","admin"]}'
       - key: SESSION_SECRET
         generateValue: true
       # The Client ID is public (it appears in every sign-in URL). The secret is entered in the Render dashboard.

@@ -57,25 +57,25 @@ export function seedDemoData(gate, clock) {
     // Day 0. Maya asks for two weeks, tries to approve it herself, and is narrowed to one week.
     const maya = ask(MAYA, {
       resourceId: SENTINEL,
-      purposes: ["evaluation", "internal-research"],
+      purposes: ["Evaluate the sentinel model's refusals on 200 synthetic prompts", "Write up findings for the lab's internal research notes"],
       durationDays: 14,
       controls: [],
       justification: "Two-week evaluation of the sensitive mock model for my lab report",
     });
     attempt(() => decide(MAYA, maya.id, "manager", "approve", "I need this soon"));
     decide(GUIDE, maya.id, "manager", "approve", "Evaluation is in the project plan");
-    decide(RISK, maya.id, "risk", "narrow", "Evaluation only, one week, no export", { purposes: ["evaluation"], durationDays: 7, controls: ["no-export"] });
+    decide(RISK, maya.id, "risk", "narrow", "Evaluation only, one week, no export", { purposes: ["Evaluate the sentinel model's refusals on 200 synthetic prompts"], durationDays: 7, controls: ["no-export"] });
     const mayaGrant = decide(IRA, maya.id, "owner", "approve", "Fine with the narrowed scope").grant;
     step(2 * HOUR);
-    gate.use(MAYA, { credential: mayaGrant.credential, resourceId: SENTINEL, purpose: "evaluation", input: "fake transcript 1" });
-    attempt(() => gate.use(MAYA, { credential: mayaGrant.credential, resourceId: SENTINEL, purpose: "internal-research", input: "fake" }));
+    gate.use(MAYA, { credential: mayaGrant.credential, resourceId: SENTINEL, purpose: "Evaluate the sentinel model's refusals on 200 synthetic prompts", input: "fake transcript 1" });
+    attempt(() => gate.use(MAYA, { credential: mayaGrant.credential, resourceId: SENTINEL, purpose: "Write up findings for the lab's internal research notes", input: "fake" }));
     attempt(() => gate.attemptExpiryChange(MAYA, mayaGrant.id));
 
     // Day 1. Kabir asks for all 8 mock H100s; he gets 2 for 3 days, misbehaves, and is revoked.
     step(1 * DAY - 2 * HOUR);
     const kabir = ask(KABIR, {
       resourceId: H100,
-      purposes: ["fine-tuning"],
+      purposes: ["LoRA fine-tune a small model for my final-year project"],
       durationDays: 7,
       controls: [],
       gpuCount: 8,
@@ -88,18 +88,18 @@ export function seedDemoData(gate, clock) {
       controls: ["no-network-egress", "approved-images-only"],
     });
     const kabirGrant = decide(IRA, kabir.id, "owner", "approve", "Capacity available this week").grant;
-    attempt(() => gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 4, purpose: "fine-tuning", image: "netra/finetune-lora:1.0", hours: 6 }));
-    attempt(() => gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 2, purpose: "fine-tuning", image: "random/crypto-miner:latest", hours: 6 }));
-    gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 2, purpose: "fine-tuning", image: "netra/finetune-lora:1.0", hours: 12 });
+    attempt(() => gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 4, purpose: "LoRA fine-tune a small model for my final-year project", image: "netra/finetune-lora:1.0", hours: 6 }));
+    attempt(() => gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 2, purpose: "LoRA fine-tune a small model for my final-year project", image: "random/crypto-miner:latest", hours: 6 }));
+    gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 2, purpose: "LoRA fine-tune a small model for my final-year project", image: "netra/finetune-lora:1.0", hours: 12 });
     step(3 * HOUR);
     gate.revoke(RISK, kabirGrant.id, "Job tried to reach the internet (demo scenario)");
-    attempt(() => gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 1, purpose: "fine-tuning", image: "netra/finetune-lora:1.0", hours: 1 }));
+    attempt(() => gate.submitJob(KABIR, { credential: kabirGrant.credential, gpus: 1, purpose: "LoRA fine-tune a small model for my final-year project", image: "netra/finetune-lora:1.0", hours: 1 }));
 
     // Day 2. Arjun asks for a month of claims data; risk rejects it.
     step(1 * DAY - 3 * HOUR);
     const claims = ask(ARJUN, {
       resourceId: CLAIMS,
-      purposes: ["internal-research"],
+      purposes: ["Explore claim patterns for a fraud-detection idea"],
       durationDays: 30,
       controls: [],
       justification: "Explore claim patterns for a fraud-detection idea",
@@ -109,10 +109,10 @@ export function seedDemoData(gate, clock) {
 
     // Day 8. Maya's grant ended on day 7. Her late call is refused; she asks for 3 more days properly.
     step(6 * DAY);
-    attempt(() => gate.use(MAYA, { credential: mayaGrant.credential, resourceId: SENTINEL, purpose: "evaluation", input: "one more run" }));
+    attempt(() => gate.use(MAYA, { credential: mayaGrant.credential, resourceId: SENTINEL, purpose: "Evaluate the sentinel model's refusals on 200 synthetic prompts", input: "one more run" }));
     ask(MAYA, {
       resourceId: SENTINEL,
-      purposes: ["evaluation"],
+      purposes: ["Evaluate the sentinel model's refusals on 200 synthetic prompts"],
       durationDays: 3,
       controls: ["no-export"],
       justification: "Three more days to finish the evaluation report",
@@ -121,7 +121,7 @@ export function seedDemoData(gate, clock) {
     step(2 * HOUR);
     const tickets = ask(MAYA, {
       resourceId: TICKETS,
-      purposes: ["internal-research"],
+      purposes: ["Label support-ticket intents for my evaluation set"],
       durationDays: 10,
       controls: ["no-export", "logging-required"],
       justification: "Label support-ticket intents for the evaluation set",
@@ -133,20 +133,20 @@ export function seedDemoData(gate, clock) {
     step(1 * DAY - 2 * HOUR);
     const priya = ask(PRIYA, {
       resourceId: SUMMARIZER,
-      purposes: ["prototype-demo"],
+      purposes: ["Live demo of a meeting-notes summarizer at the lab open day"],
       durationDays: 5,
       controls: ["rate-limit", "output-watermark"],
       justification: "Demo of a meeting-notes summarizer at the lab open day",
     });
     const priyaGrant = approveAll(priya.id, ["Open-day demo is approved", "Watermarked, rate-limited outputs", "Summarizer has spare capacity"]);
     step(1 * HOUR);
-    gate.use(PRIYA, { credential: priyaGrant.credential, resourceId: SUMMARIZER, purpose: "prototype-demo", input: "fake meeting notes" });
+    gate.use(PRIYA, { credential: priyaGrant.credential, resourceId: SUMMARIZER, purpose: "Live demo of a meeting-notes summarizer at the lab open day", input: "fake meeting notes" });
 
     // Day 9, evening. Kabir tries again with a much smaller ask; his score now shows the revocation.
     step(10 * HOUR);
     const kabirAgain = ask(KABIR, {
       resourceId: H100,
-      purposes: ["evaluation"],
+      purposes: ["Evaluate last week's checkpoint offline"],
       durationDays: 2,
       controls: ["no-network-egress", "approved-images-only"],
       gpuCount: 2,
@@ -158,7 +158,7 @@ export function seedDemoData(gate, clock) {
     step(10 * HOUR);
     const arjun = ask(ARJUN, {
       resourceId: H100,
-      purposes: ["evaluation"],
+      purposes: ["Benchmark the eval harness on 4 GPUs"],
       durationDays: 1,
       controls: ["approved-images-only"],
       gpuCount: 4,
@@ -166,13 +166,13 @@ export function seedDemoData(gate, clock) {
     });
     const arjunGrant = approveAll(arjun.id, ["Benchmarking is in the sprint", "Approved image only", "4 of 8 GPUs free today"]);
     step(2 * HOUR);
-    gate.submitJob(ARJUN, { credential: arjunGrant.credential, gpus: 4, purpose: "evaluation", image: "netra/eval-harness:1.0", hours: 6 });
+    gate.submitJob(ARJUN, { credential: arjunGrant.credential, gpus: 4, purpose: "Benchmark the eval harness on 4 GPUs", image: "netra/eval-harness:1.0", hours: 6 });
 
     // Thirty minutes ago. Priya asks for the sentinel model; nobody has looked at it yet.
     step(30 * 60 * 1000);
     ask(PRIYA, {
       resourceId: SENTINEL,
-      purposes: ["evaluation"],
+      purposes: ["Compare the summarizer's safety filter with the sentinel model"],
       durationDays: 7,
       controls: ["no-export"],
       justification: "Compare the summarizer's safety filter against the sentinel model",

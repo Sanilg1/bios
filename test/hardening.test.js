@@ -88,10 +88,12 @@ describe("NamoID callback diagnostics", () => {
   test("a failed callback says exactly why, without reflecting arbitrary input", async () => {
     const express = (await import("express")).default;
     const session = (await import("express-session")).default;
+    let started = 0;
     const namoid = {
       hostedAuth: {
         async start({ redirectUri }) {
-          return { authorizationUrl: "https://namoid.example/authorize", transaction: { state: "s-1", nonce: "n", codeVerifier: "v", redirectUri, createdAt: Date.now() } };
+          started += 1;
+          return { authorizationUrl: "https://namoid.example/authorize", transaction: { state: `s-${started}`, nonce: "n", codeVerifier: "v", redirectUri, createdAt: Date.now() } };
         },
       },
     };
@@ -117,6 +119,14 @@ describe("NamoID callback diagnostics", () => {
       const login = await fetch(`${base}/api/auth/login`, { method: "POST" });
       const cookie = login.headers.get("set-cookie").split(";")[0];
       assert.equal(await callback("code=c&state=wrong", cookie), "state_mismatch");
+
+      // A second tab (or a double click) starts another sign-in in the same browser session.
+      await fetch(`${base}/api/auth/login`, { method: "POST", headers: { cookie } });
+      // The first tab's reply still matches its own attempt and gets as far as the code exchange
+      // (which fails here only because the fake NamoID has no token endpoint).
+      assert.equal(await callback("code=c&state=s-1", cookie), "exchange");
+      assert.equal(await callback("code=c&state=s-1", cookie), "state_mismatch", "each attempt is single use");
+      assert.equal(await callback("code=c&state=s-2", cookie), "exchange", "the second tab still works too");
     } finally {
       console.error = errors;
       server.close();

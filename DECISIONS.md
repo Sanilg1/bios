@@ -49,6 +49,7 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 - **CSP:** helmet sets `default-src 'self'`.
 - **Credentials:** mock credentials are shown only to the grant holder and never written to the audit log (a test checks this).
 - **Identity:** users are keyed by NamoID `sub`. Display names are cosmetic.
+- **Roles and data isolation:** roles come from an operator-managed directory matched on a NamoID-verified email, never from the browser. Every list the API returns is scoped by the server to what the caller may see, so a requester cannot read another person's requests, grants, jobs or history.
 - **Before production we would harden:**
   - a durable session store and an admin-managed role table
   - rate limits on API routes (only auth routes are limited today)
@@ -58,7 +59,7 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 
 ## Testing
 
-`npm test` runs 52 tests on Node's built-in runner with a fixed clock and no network (the table below, plus [test/hardening.test.js](test/hardening.test.js) for token refresh and snapshot failures):
+`npm test` runs 63 tests on Node's built-in runner with a fixed clock and no network (the table below, plus [test/hardening.test.js](test/hardening.test.js) for token refresh and snapshot failures):
 
 | Group | What it proves |
 |---|---|
@@ -72,6 +73,9 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 | T8 Receipts | Allows say "not a safety guarantee"; history is append-only; no credentials in logs |
 | T9 Score is advisory | A score below 20 and one above 60 get identical review requirements and grants |
 | T10 Break-it parity | Every panel attack is blocked by its expected rule |
+| T12 Free-text purposes | Any wording can be approved; use must name an approved purpose (case and spacing ignored); narrowing can drop but never add or reword |
+| T13 Who can see what | A requester sees only their own requests, grants, jobs and history; reviewers see what their role needs; credentials stay with the holder |
+| T14 Role directory | Roles only from the directory, only on a NamoID-verified email; removed from the directory → requester only; bad config refused at startup |
 | T11 Reviewer dashboards | Each dashboard needs its role (R11, logged); a reviewer sees only what they may act on; owners see only their resources; no credentials leak |
 
 **Do the tests bite?** [scripts/mutation-check.mjs](scripts/mutation-check.mjs) removes each rule from a scratch copy, one at a time, and reruns the suite. A control run without mutation must pass first. Our first version of this script had a bug: it reported every mutant as "caught" because the test runner was failing for an unrelated reason. Adding the control run exposed it. Results are in [samples/mutation-report.md](samples/mutation-report.md): all 16 mutants are caught.

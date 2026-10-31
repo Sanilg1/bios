@@ -6,7 +6,8 @@ import { SlotSummary } from "./RequestView.jsx";
 const SLOT_ROLE = { manager: "manager", risk: "risk", owner: "owner" };
 
 // One request with the slot forms a reviewer may use. onlySlot limits it to one dashboard's slot.
-export function ReviewCard({ request, ctx, mine, onlySlot }) {
+// onDecided lets the dashboard keep the receipt on screen after the card leaves its list.
+export function ReviewCard({ request, ctx, mine, onlySlot, onDecided }) {
   const { user, meta } = ctx;
   const [result, setResult] = useState(null);
   const eff = request.effective;
@@ -46,6 +47,7 @@ export function ReviewCard({ request, ctx, mine, onlySlot }) {
               meta={meta}
               suggested={user.roles.includes(SLOT_ROLE[slot])}
               onResult={(res) => {
+                onDecided?.(res);
                 setResult(res);
                 ctx.refresh();
               }}

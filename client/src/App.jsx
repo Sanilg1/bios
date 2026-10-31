@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Login } from "./views/Login.jsx";
-import { RequestView } from "./views/RequestView.jsx";
-import { GrantsView } from "./views/GrantsView.jsx";
+import { MyAccessView } from "./views/MyAccessView.jsx";
 import { HistoryView } from "./views/HistoryView.jsx";
 import { BreakItView } from "./views/BreakItView.jsx";
-import { DemoView } from "./views/DemoView.jsx";
+import { AdminView } from "./views/AdminView.jsx";
 import { DASHBOARDS, Dashboard, dashboardCount } from "./views/Dashboards.jsx";
 
+// One independent dashboard per role. A tab appears only for a role you hold; the server
+// enforces the same rule (R11) for anyone who opens a dashboard link directly.
 const TABS = [
-  { id: "request", label: "Request access" },
-  ...DASHBOARDS.map((d) => ({ id: d.id, label: d.label, dashboard: true })),
-  { id: "grants", label: "Grants & use" },
+  { id: "access", label: "My access", role: "requester" },
+  ...DASHBOARDS.map((d) => ({ id: d.id, label: d.label, role: d.id, dashboard: true })),
+  { id: "admin", label: "Admin", role: "admin" },
   { id: "history", label: "History" },
   { id: "breakit", label: "Try to break it" },
-  { id: "demo", label: "Demo controls", demoOnly: true },
 ];
+const HOUR_MS = 60 * 60 * 1000;
 
 export function App() {
   const [session, setSession] = useState(null);
@@ -79,13 +80,14 @@ export function App() {
     user,
     ...data,
     demoMode: session.demoMode,
+    via: session.via,
     refresh: async () => {
       await loadSession();
       await refresh();
     },
     startExtension: (grant) => {
       setExtendFrom(grant);
-      setTab("request");
+      setTab("access");
     },
   };
 
@@ -96,28 +98,28 @@ export function App() {
           <strong>{user.name}</strong>
           <span className={`via via-${session.via}`}>{session.via === "namoid" ? "signed in via NamoID" : "dev login (not NamoID)"}</span>
           <span className="roles">
-            {user.roles.length ? user.roles.map((r) => <span key={r} className="chip">{r}</span>) : <span className="chip warn">no roles yet</span>}
+            {user.roles.map((r) => (
+              <span key={r} className="chip">{r}</span>
+            ))}
           </span>
         </div>
         <div className="userbar-right">
-          {session.demoMode && data.meta && <span className="clock">Demo clock: {new Date(data.meta.now).toLocaleString()}</span>}
           <button className="ghost" onClick={signOut}>Sign out</button>
         </div>
       </section>
+      {data.meta && Math.abs(data.meta.now - Date.now()) > HOUR_MS && (
+        <p className="note" role="note">
+          Simulated time is on: the app thinks it is <strong>{new Date(data.meta.now).toLocaleString()}</strong>. An operator moved the clock to
+          demonstrate expiry; the jump is in the history.
+        </p>
+      )}
       <nav className="tabs">
-        {TABS.filter((t) => !t.demoOnly || session.demoMode).map((t) => {
-          const locked = t.dashboard && !user.roles.includes(t.id);
-          const count = t.dashboard && !locked ? dashboardCount(data.dashboards[t.id]) : 0;
+        {visibleTabs(user).map((t) => {
+          const count = t.dashboard ? dashboardCount(data.dashboards[t.id]) : 0;
           return (
-            <button
-              key={t.id}
-              className={`tab ${tab === t.id ? "active" : ""} ${locked ? "locked" : ""}`}
-              onClick={() => setTab(t.id)}
-              title={locked ? `Needs the ${t.id} role` : undefined}
-            >
+            <button key={t.id} className={`tab ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
               {t.label}
               {count > 0 && <span className="badge" aria-label={`${count} waiting`}>{count}</span>}
-              {locked && <span className="lock"> · locked</span>}
             </button>
           );
         })}
@@ -127,12 +129,11 @@ export function App() {
           <p className="muted">Loading…</p>
         ) : (
           <>
-            {tab === "request" && <RequestView ctx={ctx} extendFrom={extendFrom} clearExtend={() => setExtendFrom(null)} />}
+            {tab === "access" && <MyAccessView ctx={ctx} extendFrom={extendFrom} clearExtend={() => setExtendFrom(null)} />}
             {DASHBOARDS.some((d) => d.id === tab) && <Dashboard key={tab} role={tab} ctx={ctx} />}
-            {tab === "grants" && <GrantsView ctx={ctx} />}
+            {tab === "admin" && <AdminView ctx={ctx} />}
             {tab === "history" && <HistoryView ctx={ctx} />}
             {tab === "breakit" && <BreakItView />}
-            {tab === "demo" && session.demoMode && <DemoView ctx={ctx} />}
           </>
         )}
       </div>
@@ -140,9 +141,14 @@ export function App() {
   );
 }
 
+function visibleTabs(user) {
+  return TABS.filter((t) => !t.role || user.roles.includes(t.role));
+}
+
+// A dashboard link for a role you don't hold still opens: the dashboard shows the server's refusal.
 function tabFromHash() {
   const id = window.location.hash.slice(1);
-  return TABS.some((t) => t.id === id) ? id : "request";
+  return TABS.some((t) => t.id === id) ? id : "access";
 }
 
 function Shell({ children }) {

@@ -19,20 +19,26 @@ export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDCl
       try {
         started = await namoid.hostedAuth.start({
           redirectUri: `${appBaseUrl}/api/auth/callback`,
-          scopes: ["openid", "email", "offline_access"],
+          // profile carries the person's name; offline_access gives the server a refresh token (docs: Hosted Auth → Identity scopes).
+          scopes: ["openid", "profile", "email", "offline_access"],
         });
       } catch (error) {
         console.error("Hosted Auth start failed", safeError(error));
         res.status(502).json({ error: `NamoID couldn't start sign-in (${safeError(error)}). Check the Client ID and environment.` });
         return;
       }
-      req.session.namoidTransaction = {
+      // Pending sign-ins are kept per state, so a second tab, a double click or NamoID's
+      // "Try sign-in again" doesn't invalidate an earlier attempt. Each is single-use and expires.
+      const pending = livePending(req.session.namoidTransactions);
+      pending[started.transaction.state] = {
         state: started.transaction.state,
         nonce: started.transaction.nonce,
         codeVerifier: started.transaction.codeVerifier,
         redirectUri: started.transaction.redirectUri,
         createdAt: started.transaction.createdAt,
       };
+      req.session.namoidTransactions = newest(pending, MAX_PENDING_TRANSACTIONS);
+      delete req.session.namoidTransaction;
       await saveSession(req);
       res.json({ authorizationUrl: started.authorizationUrl });
     }));
@@ -41,24 +47,30 @@ export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDCl
       const errorCode = stringQuery(req.query.error);
       const code = stringQuery(req.query.code);
       const returnedState = stringQuery(req.query.state);
-      const transaction = req.session.namoidTransaction;
-      delete req.session.namoidTransaction;
+      // Consume the matching pending sign-in (single use), and drop any that have expired.
+      const stored = req.session.namoidTransactions ?? {};
+      const expiredAttempt = Boolean(returnedState && Object.hasOwn(stored, returnedState));
+      const pending = livePending(stored);
+      const transaction = returnedState && Object.hasOwn(pending, returnedState) ? pending[returnedState] : null;
+      if (transaction) delete pending[returnedState];
+      req.session.namoidTransactions = pending;
 
       // Say exactly why a sign-in didn't complete. Only fixed codes reach the URL; NamoID's own
       // error code is passed on only if it looks like an OAuth error code.
       let failure = null;
       if (errorCode) failure = `namoid_${/^[a-z_]{1,40}$/.test(errorCode) ? errorCode : "error"}`;
       else if (!code) failure = "no_code";
-      else if (!transaction) failure = "no_transaction";
-      else if (!returnedState || transaction.state !== returnedState) failure = "state_mismatch";
-      else if (Date.now() - transaction.createdAt > TRANSACTION_LIFETIME_MS) failure = "expired";
+      else if (!transaction) {
+        // Known but too old → expired; other sign-ins pending → a reply to none of them; nothing → lost.
+        failure = expiredAttempt ? "expired" : Object.keys(pending).length ? "state_mismatch" : "no_transaction";
+      }
       if (failure) {
         console.error("Hosted Auth callback rejected", {
           failure,
           error: errorCode,
           errorDescription: stringQuery(req.query.error_description)?.slice(0, 200) ?? null,
           queryKeys: Object.keys(req.query),
-          hadTransaction: Boolean(transaction),
+          pendingSignIns: Object.keys(req.session.namoidTransactions).length,
         });
         await saveSession(req);
         res.redirect(303, `/?auth_error=${failure}`);
@@ -87,6 +99,9 @@ export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDCl
           userId: identity.sub,
           // Display only. Never used as a key: the stable key is `sub`.
           displayName: identity.name || identity.preferred_username || identity.email || identity.sub,
+          // Used only to match the operator's role directory, and only when NamoID says it's verified.
+          email: typeof identity.email === "string" ? identity.email : null,
+          emailVerified: identity.email_verified === true || claims.email_verified === true,
           sessionId: typeof claims.sid === "string" ? claims.sid : null,
           expiresAt: tokenExpiry(tokens),
         };
@@ -132,7 +147,7 @@ export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDCl
         req.session.namoidAuth = current;
         await saveSession(req);
       }
-      return { sub: current.userId, name: current.displayName, via: "namoid" };
+      return { sub: current.userId, name: current.displayName, email: current.email ?? null, emailVerified: current.emailVerified === true, via: "namoid" };
     } catch (error) {
       // A failed refresh (e.g. replayed token family) is terminal: clear and require a fresh sign-in.
       console.error("Session refresh failed", safeError(error));
@@ -168,6 +183,18 @@ export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDCl
   }
 
   return { name: "namoid", mount, identify };
+}
+
+const MAX_PENDING_TRANSACTIONS = 5;
+
+// Pending sign-ins that are still inside the 10-minute window.
+function livePending(pending) {
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(pending ?? {}).filter(([, t]) => now - t.createdAt <= TRANSACTION_LIFETIME_MS));
+}
+
+function newest(pending, max) {
+  return Object.fromEntries(Object.entries(pending).sort(([, a], [, b]) => b.createdAt - a.createdAt).slice(0, max));
 }
 
 function tokenExpiry(tokens) {

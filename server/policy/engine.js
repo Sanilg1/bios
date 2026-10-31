@@ -6,7 +6,7 @@ import {
   COMPUTE_ONLY_CONTROLS,
   CONTROLS,
   MAX_DURATION_DAYS,
-  PURPOSES,
+  PURPOSE_LIMITS,
   ROLES,
   SLOTS,
   SLOT_ROLE,
@@ -79,7 +79,31 @@ export function jobStatus(job, grant, t) {
 const list = (items) => items.join(", ");
 const fmt = (ms) => new Date(ms).toISOString().replace(".000Z", "Z");
 
-export function createGate({ state, clock, onChange = () => {}, newSecret = () => randomBytes(12).toString("hex") }) {
+// Purposes are free text. Two purposes are the same if they match ignoring case and spacing,
+// so "Evaluate  bias" and "evaluate bias" are one purpose, and use must name an approved one.
+export function normalizePurpose(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim();
+}
+export const purposeKey = (text) => normalizePurpose(text).toLowerCase();
+
+// The role directory: who holds which reviewer role, set by the operator (ROLE_DIRECTORY env).
+// Keys are NamoID-verified email addresses; values are a list of roles, or { roles, owns }
+// where owns lists resource ids (default: every resource) for the owner role.
+export function parseDirectory(raw) {
+  if (!raw) return new Map();
+  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+  const directory = new Map();
+  for (const [email, value] of Object.entries(parsed)) {
+    const entry = Array.isArray(value) ? { roles: value } : value;
+    const roles = [...new Set(["requester", ...(entry.roles ?? [])])];
+    const unknown = roles.filter((role) => !ROLES.includes(role));
+    if (unknown.length) throw new Error(`ROLE_DIRECTORY: unknown role(s) ${unknown.join(", ")} for ${email}`);
+    directory.set(email.trim().toLowerCase(), { roles, owns: entry.owns ?? "*" });
+  }
+  return directory;
+}
+
+export function createGate({ state, clock, onChange = () => {}, newSecret = () => randomBytes(12).toString("hex"), directory = new Map() }) {
   state.grants.forEach(lockGrant);
   state.audit.forEach((event) => Object.freeze(event));
 
@@ -113,19 +137,61 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
 
   // ---------- users and resources ----------
 
-  function upsertUser({ sub, name }) {
-    const existing = state.users[sub];
-    if (existing) {
-      if (name && existing.name !== name) {
-        existing.name = name;
-        onChange(state);
-      }
-      return existing;
+  // Called on every signed-in request. Identity is keyed by NamoID sub; the role directory is
+  // matched only on an email NamoID says is verified, and only ever sets roles for that sub.
+  function upsertUser({ sub, name, email = null, emailVerified = false }) {
+    let user = state.users[sub];
+    let changed = false;
+    if (!user) {
+      // Anyone who signs in may ask for access; asking grants nothing until three other people approve.
+      user = state.users[sub] = { sub, name: name || email || sub, email, roles: ["requester"], firstSeenAt: now() };
+      record({ action: "user.first-sign-in", actorSub: sub, allowed: true, rule: null, receipt: "First sign-in through NamoID. Can request access; reviewer roles come only from the role directory." });
+      changed = true;
     }
-    state.users[sub] = { sub, name: name || sub, roles: [] };
-    record({ action: "user.first-sign-in", actorSub: sub, allowed: true, rule: null, receipt: "First sign-in. No roles yet." });
-    onChange(state);
-    return state.users[sub];
+    if (name && user.name !== name) {
+      user.name = name;
+      changed = true;
+    }
+    if (email && user.email !== email) {
+      user.email = email;
+      changed = true;
+    }
+    const entry = email && emailVerified === true ? directory.get(email.trim().toLowerCase()) : null;
+    if (entry) changed = applyDirectoryEntry(user, entry) || changed;
+    // Taken out of the directory (or email no longer verified): back to requester only.
+    else if (user.rolesSource === "directory") changed = applyDirectoryEntry(user, { roles: ["requester"], owns: [] }) || changed;
+    if (changed) onChange(state);
+    return user;
+  }
+
+  function applyDirectoryEntry(user, entry) {
+    const before = [...user.roles].sort().join(",");
+    const owned = entry.roles.includes("owner") ? (entry.owns === "*" ? state.resources.map((r) => r.id) : entry.owns) : [];
+    let ownershipChanged = false;
+    for (const resource of state.resources) {
+      const owns = resource.ownerSubs.includes(user.sub);
+      if (owned.includes(resource.id) && !owns) {
+        resource.ownerSubs.push(user.sub);
+        ownershipChanged = true;
+      }
+      if (!owned.includes(resource.id) && owns) {
+        resource.ownerSubs = resource.ownerSubs.filter((s) => s !== user.sub);
+        ownershipChanged = true;
+      }
+    }
+    const after = [...entry.roles].sort().join(",");
+    if (before === after && !ownershipChanged) return false;
+    user.roles = [...entry.roles];
+    user.rolesSource = entry.roles.length > 1 ? "directory" : null;
+    record({
+      action: "roles.directory",
+      actorSub: user.sub,
+      allowed: true,
+      rule: null,
+      target: user.sub,
+      receipt: `Roles from the role directory: [${before || "none"}] → [${after}]${owned.length ? `; owns ${owned.length} resource(s)` : ""}. Separation of duties still applies per request.`,
+    });
+    return true;
   }
 
   function getUser(sub) {
@@ -173,10 +239,12 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
 
   function validateScope(resource, scope) {
     const { purposes, durationDays, controls, gpuCount } = scope;
-    if (!Array.isArray(purposes) || purposes.length === 0) deny("R12", "Pick at least one purpose.");
+    if (!Array.isArray(purposes) || purposes.length === 0) deny("R12", "Say what you'll use it for: at least one purpose.");
+    if (purposes.length > PURPOSE_LIMITS.maxPurposes) deny("R12", `At most ${PURPOSE_LIMITS.maxPurposes} purposes per request.`);
     for (const purpose of purposes) {
-      if (!PURPOSES.includes(purpose)) deny("R12", `"${purpose}" is not a known purpose.`);
-      if (!resource.allowedPurposes.includes(purpose)) deny("R12", `${resource.name} can't be used for "${purpose}".`);
+      if (purpose.length < PURPOSE_LIMITS.minLength || purpose.length > PURPOSE_LIMITS.maxLength) {
+        deny("R12", `Each purpose must be ${PURPOSE_LIMITS.minLength}–${PURPOSE_LIMITS.maxLength} characters.`);
+      }
     }
     if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > MAX_DURATION_DAYS) {
       deny("R12", `Duration must be 1–${MAX_DURATION_DAYS} whole days.`);
@@ -195,7 +263,7 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
 
   function normalizeScope(resource, input) {
     return {
-      purposes: [...new Set(input.purposes ?? [])],
+      purposes: uniquePurposes(input.purposes),
       durationDays: Number(input.durationDays),
       controls: [...new Set(input.controls ?? [])],
       gpuCount: resource.type === "compute" ? Number(input.gpuCount) : null,
@@ -251,13 +319,15 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
 
   function narrowedScope(resource, current, narrowTo = {}) {
     const next = {
-      purposes: narrowTo.purposes ? [...new Set(narrowTo.purposes)] : [...current.purposes],
+      purposes: narrowTo.purposes ? uniquePurposes(narrowTo.purposes) : [...current.purposes],
       durationDays: narrowTo.durationDays != null ? Number(narrowTo.durationDays) : current.durationDays,
       controls: narrowTo.controls ? [...new Set(narrowTo.controls)] : [...current.controls],
       gpuCount: resource.type === "compute" && narrowTo.gpuCount != null ? Number(narrowTo.gpuCount) : current.gpuCount,
     };
     const widened = [];
-    const extraPurposes = next.purposes.filter((p) => !current.purposes.includes(p));
+    const currentKeys = current.purposes.map(purposeKey);
+    const nextKeys = next.purposes.map(purposeKey);
+    const extraPurposes = next.purposes.filter((p) => !currentKeys.includes(purposeKey(p)));
     if (extraPurposes.length) widened.push(`adds purpose ${list(extraPurposes)}`);
     if (next.durationDays > current.durationDays) widened.push(`lengthens ${current.durationDays} → ${next.durationDays} days`);
     const droppedControls = current.controls.filter((c) => !next.controls.includes(c));
@@ -267,7 +337,9 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     validateScope(resource, next);
 
     const changes = [];
-    const removed = current.purposes.filter((p) => !next.purposes.includes(p));
+    // Keep the original wording of the purposes that survive the narrowing.
+    next.purposes = current.purposes.filter((p) => nextKeys.includes(purposeKey(p)));
+    const removed = current.purposes.filter((p) => !nextKeys.includes(purposeKey(p)));
     if (removed.length) changes.push(`removed purpose ${list(removed)}`);
     if (next.durationDays < current.durationDays) changes.push(`${current.durationDays} → ${next.durationDays} days`);
     const added = next.controls.filter((c) => !current.controls.includes(c));
@@ -393,14 +465,13 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
       if (input.resourceId && input.resourceId !== grant.resourceId) {
         deny("R13", `${grant.id} is for ${resource.name}, not ${input.resourceId}.`, { grantId: grant.id });
       }
-      if (!grant.purposes.includes(input.purpose)) {
-        deny("R4", `${grant.id} is approved for ${list(grant.purposes)}; this call was for "${input.purpose}".`, { grantId: grant.id });
-      }
+      const purpose = approvedPurpose(grant, input.purpose);
+      if (!purpose) deny("R4", `${grant.id} is approved for ${quoted(grant.purposes)}; this call was for "${normalizePurpose(input.purpose)}".`, { grantId: grant.id });
       const output = mockOutput(resource, grant, String(input.input ?? ""));
       return {
         output,
         banner: "Mock output. Authorization ≠ safety.",
-        receipt: `Allowed: ${resource.name} for "${input.purpose}" under ${grant.id} (controls: ${list(grant.controls) || "none"}; expires ${fmt(grant.expiresAt)}). ${NOT_SAFE}`,
+        receipt: `Allowed: ${resource.name} for "${purpose}" under ${grant.id} (controls: ${list(grant.controls) || "none"}; expires ${fmt(grant.expiresAt)}). ${NOT_SAFE}`,
         audit: { grantId: grant.id, resourceId: resource.id },
       };
     });
@@ -410,9 +481,8 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     return guarded("job.submit", actorSub, { purpose: input.purpose, gpus: input.gpus }, () => {
       const { grant, resource } = grantForCredential(actorSub, input.credential, "compute");
       const t = now();
-      if (!grant.purposes.includes(input.purpose)) {
-        deny("R4", `${grant.id} is approved for ${list(grant.purposes)}; this job is for "${input.purpose}".`, { grantId: grant.id });
-      }
+      const purpose = approvedPurpose(grant, input.purpose);
+      if (!purpose) deny("R4", `${grant.id} is approved for ${quoted(grant.purposes)}; this job is for "${normalizePurpose(input.purpose)}".`, { grantId: grant.id });
       const gpus = Number(input.gpus);
       const hours = Number(input.hours ?? 4);
       if (!Number.isInteger(gpus) || gpus < 1) deny("R12", "A job needs a whole number of GPUs.", { grantId: grant.id });
@@ -432,7 +502,7 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
         grantId: grant.id,
         holderSub: actorSub,
         gpus,
-        purpose: input.purpose,
+        purpose,
         image,
         hours,
         startedAt: t,
@@ -442,7 +512,7 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
       state.jobs.push(job);
       return {
         job: viewJob(job, t),
-        receipt: `Allowed: mock job ${job.id} on ${gpus}× H100 for "${input.purpose}" under ${grant.id}. It will be killed if the grant expires or is revoked. ${NOT_SAFE}`,
+        receipt: `Allowed: mock job ${job.id} on ${gpus}× H100 for "${purpose}" under ${grant.id}. It will be killed if the grant expires or is revoked. ${NOT_SAFE}`,
         audit: { grantId: grant.id, resourceId: resource.id, jobId: job.id },
       };
     });
@@ -541,18 +611,66 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     return { ...request, requesterName: nameOf(request.requesterSub), resourceName: resource.name, resourceType: resource.type, reviews };
   }
 
-  function listRequests() {
-    return state.requests.map(viewRequest).reverse();
+  // ---------- who can see what ----------
+  // Enforced here, not in the UI. A requester sees only their own requests, grants, jobs and
+  // history. A manager sees every request (any manager may fill the manager slot) and the grants
+  // of requests they decided. An owner sees what happens on the resources they own. Risk
+  // reviewers and the admin see everything. Credentials are only ever shown to their holder.
+  // Without a viewer (internal callers, exports in scripts) nothing is filtered.
+  function scopeFor(viewerSub) {
+    if (viewerSub === undefined) return { all: true, request: () => true, grant: () => true, job: () => true, event: () => true };
+    const roles = state.users[viewerSub]?.roles ?? [];
+    const all = roles.includes("risk") || roles.includes("admin");
+    const manager = roles.includes("manager");
+    const owned = new Set(roles.includes("owner") ? state.resources.filter((r) => r.ownerSubs.includes(viewerSub)).map((r) => r.id) : []);
+    const decided = (request) => SLOTS.some((slot) => request.reviews[slot]?.reviewerSub === viewerSub);
+    const request = (r) => all || r.requesterSub === viewerSub || manager || owned.has(r.resourceId) || decided(r);
+    const grant = (g) => {
+      if (all || g.holderSub === viewerSub || owned.has(g.resourceId)) return true;
+      const origin = state.requests.find((r) => r.id === g.requestId);
+      return Boolean(origin && decided(origin));
+    };
+    const job = (j) => {
+      const g = state.grants.find((x) => x.id === j.grantId);
+      return all || j.holderSub === viewerSub || (g && owned.has(g.resourceId));
+    };
+    const event = (e) => {
+      if (all || e.actorSub === viewerSub) return true;
+      if (e.grantId) {
+        const g = state.grants.find((x) => x.id === e.grantId);
+        return Boolean(g && grant(g));
+      }
+      if (e.requestId) {
+        const r = state.requests.find((x) => x.id === e.requestId);
+        return Boolean(r && request(r));
+      }
+      return false;
+    };
+    return { all, request, grant, job, event };
+  }
+
+  function listRequests(viewerSub) {
+    const scope = scopeFor(viewerSub);
+    return state.requests.filter(scope.request).map(viewRequest).reverse();
   }
 
   function listGrants(viewerSub) {
     const t = now();
-    return state.grants.map((g) => viewGrant(g, viewerSub, t)).reverse();
+    const scope = scopeFor(viewerSub);
+    return state.grants.filter(scope.grant).map((g) => viewGrant(g, viewerSub, t)).reverse();
   }
 
-  function listJobs() {
+  function listJobs(viewerSub) {
     const t = now();
-    return state.jobs.map((j) => viewJob(j, t)).reverse();
+    const scope = scopeFor(viewerSub);
+    return state.jobs.filter(scope.job).map((j) => viewJob(j, t)).reverse();
+  }
+
+  // Everyone who has signed in, for the admin's people directory.
+  function listUsers() {
+    return Object.values(state.users)
+      .map((u) => ({ sub: u.sub, name: u.name, email: u.email ?? null, roles: [...u.roles], firstSeenAt: u.firstSeenAt ?? null, owns: state.resources.filter((r) => r.ownerSubs.includes(u.sub)).map((r) => r.id) }))
+      .sort((a, b) => (a.firstSeenAt ?? 0) - (b.firstSeenAt ?? 0));
   }
 
   // ---------- per-reviewer dashboards ----------
@@ -626,8 +744,10 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     return result;
   }
 
-  function history(filter = {}) {
+  function history(filter = {}, viewerSub) {
+    const scope = scopeFor(viewerSub);
     const events = state.audit
+      .filter(scope.event)
       .filter((e) => !filter.requestId || e.requestId === filter.requestId)
       .filter((e) => !filter.resourceId || e.resourceId === filter.resourceId)
       .filter((e) => !filter.grantId || e.grantId === filter.grantId);
@@ -667,11 +787,32 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     listJobs,
     history,
     dashboard,
+    listUsers,
     score,
     demoAdvanceClock,
     resources: () => state.resources,
   };
 }
+
+function uniquePurposes(input) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of Array.isArray(input) ? input : []) {
+    const purpose = normalizePurpose(raw);
+    if (!purpose || seen.has(purposeKey(purpose))) continue;
+    seen.add(purposeKey(purpose));
+    out.push(purpose);
+  }
+  return out;
+}
+
+// The grant's own wording of the purpose a call names, or null if it isn't approved.
+function approvedPurpose(grant, requested) {
+  const key = purposeKey(requested);
+  return key ? (grant.purposes.find((p) => purposeKey(p) === key) ?? null) : null;
+}
+
+const quoted = (items) => items.map((p) => `"${p}"`).join(", ");
 
 function mockOutput(resource, grant, input) {
   const seed = [...input].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);

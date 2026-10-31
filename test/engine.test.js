@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { NOT_SAFE } from "../server/policy/rules.js";
-import { HOUR } from "../server/policy/engine.js";
+import { createGate, fixedClock, HOUR, parseDirectory } from "../server/policy/engine.js";
 import { approve, approveAll, assertDenied, DAY, GUIDE, grantFor, H100, IRA, KABIR, makeGate, MAYA, NEEL, request, RISK, SENTINEL } from "./helpers.js";
 
 describe("T1 separation of duties", () => {
@@ -244,11 +244,13 @@ describe("T6 purpose and holder enforcement", () => {
 
   test("requests must fit the resource", () => {
     const { gate } = makeGate();
-    assertDenied(() => request(gate, MAYA, { purposes: ["large-scale-training"] }), "R12");
+    assertDenied(() => request(gate, MAYA, { purposes: [] }), "R12");
+    assertDenied(() => request(gate, MAYA, { purposes: ["  "] }), "R12");
+    assertDenied(() => request(gate, MAYA, { purposes: ["x".repeat(121)] }), "R12");
+    assertDenied(() => request(gate, MAYA, { purposes: ["one", "two", "three", "four"] }), "R12");
     assertDenied(() => request(gate, MAYA, { durationDays: 31 }), "R12");
     assertDenied(() => request(gate, MAYA, { controls: ["no-network-egress"] }), "R12");
     assertDenied(() => request(gate, KABIR, { resourceId: H100, gpuCount: 9, controls: [] }), "R12");
-    assertDenied(() => request(gate, GUIDE), "R11");
   });
 });
 
@@ -308,13 +310,13 @@ describe("T9 confidence score stays advisory", () => {
     const { gate, clock } = makeGate();
     const clean = grantFor(gate, MAYA);
     clock.advance(8 * DAY);
-    assert.equal(gate.score(MAYA).score, 55);
+    assert.equal(gate.score(MAYA).score, 50 + 2 + 5, "approved exactly as asked (+2), ended cleanly (+5)");
 
     const bad = grantFor(gate, KABIR);
     assertDenied(() => gate.use(KABIR, { credential: bad.credential, resourceId: SENTINEL, purpose: "fine-tuning" }), "R4");
     gate.revoke(RISK, bad.id, "misuse");
     const s = gate.score(KABIR);
-    assert.equal(s.score, 50 - 3 - 20);
+    assert.equal(s.score, 50 + 2 - 3 - 20, "approved as asked (+2), denied use (−3), revoked (−20)");
     assert.ok(s.factors.some((f) => f.reason.includes("emergency-revoked")));
     assert.ok(clean);
   });
@@ -413,5 +415,99 @@ describe("T11 reviewer dashboards", () => {
     assert.ok(!JSON.stringify(risk).includes(grant.credential), "no credentials anywhere on the risk dashboard");
     gate.revoke(RISK, grant.id, "incident");
     assert.deepEqual(gate.dashboard(RISK, "risk").activeGrants, []);
+  });
+});
+
+describe("New users", () => {
+  test("a first-time NamoID user can request access but holds no reviewer role", () => {
+    const { gate } = makeGate();
+    const user = gate.upsertUser({ sub: "namoid|new-person", name: "New Person" });
+    assert.deepEqual(user.roles, ["requester"]);
+    const created = gate.createRequest("namoid|new-person", { resourceId: SENTINEL, purposes: ["evaluation"], durationDays: 1, controls: [], justification: "first ask" });
+    assert.equal(created.allowed, true);
+    for (const role of ["manager", "risk", "owner"]) assertDenied(() => gate.dashboard("namoid|new-person", role), "R11");
+    assertDenied(() => gate.review("namoid|new-person", created.request.id, { slot: "manager", decision: "approve", reason: "mine" }), "R1");
+  });
+});
+
+describe("T12 free-text purposes", () => {
+  test("any purpose can be written, and use must name an approved one (ignoring case and spacing)", () => {
+    const { gate } = makeGate();
+    const grant = grantFor(gate, MAYA, { purposes: ["Evaluate jailbreak resistance of the sentinel model"] });
+    const use = (purpose) => () => gate.use(MAYA, { credential: grant.credential, resourceId: SENTINEL, purpose, input: "x" });
+    const ok = use("  evaluate JAILBREAK   resistance of the sentinel model ")();
+    assert.match(ok.receipt, /"Evaluate jailbreak resistance of the sentinel model"/, "the receipt quotes the approved wording");
+    assertDenied(use("Fine-tune a chatbot on its outputs"), "R4");
+    assertDenied(use(""), "R4");
+  });
+
+  test("narrowing can drop a written purpose but never add or reword one", () => {
+    const { gate } = makeGate();
+    const req = request(gate, MAYA, { purposes: ["Benchmark latency", "Red-team prompts"] });
+    assertDenied(
+      () => gate.review(RISK, req.id, { slot: "risk", decision: "narrow", reason: "x", narrowTo: { purposes: ["Benchmark latency", "Something new"] } }),
+      "R3",
+    );
+    gate.review(RISK, req.id, { slot: "risk", decision: "narrow", reason: "latency only", narrowTo: { purposes: ["benchmark LATENCY"] } });
+    approve(gate, req.id, "manager", GUIDE);
+    const grant = approve(gate, req.id, "owner", IRA).grant;
+    assert.deepEqual(grant.purposes, ["Benchmark latency"], "the original wording survives the narrowing");
+    assertDenied(() => gate.use(MAYA, { credential: grant.credential, resourceId: SENTINEL, purpose: "Red-team prompts" }), "R4");
+  });
+});
+
+describe("T13 who can see what", () => {
+  test("a requester sees only their own requests, grants, jobs and history", () => {
+    const { gate } = makeGate();
+    const mine = grantFor(gate, MAYA);
+    const theirs = grantFor(gate, KABIR, { resourceId: H100, purposes: ["Benchmark"], durationDays: 1, controls: [], gpuCount: 2 });
+    gate.submitJob(KABIR, { credential: theirs.credential, gpus: 1, purpose: "Benchmark", image: "netra/eval-harness:1.0", hours: 1 });
+    assert.deepEqual(gate.listGrants(MAYA).map((g) => g.id), [mine.id]);
+    assert.ok(gate.listRequests(MAYA).every((r) => r.requesterSub === MAYA));
+    assert.deepEqual(gate.listJobs(MAYA), []);
+    const history = gate.history({}, MAYA);
+    assert.ok(history.length > 0);
+    assert.ok(history.every((e) => e.actorSub === MAYA || e.grantId === mine.id || e.requestId === mine.requestId), "nothing about Kabir");
+    assert.ok(!JSON.stringify(gate.history({}, MAYA)).includes(theirs.id));
+  });
+
+  test("reviewers see what their role needs; credentials stay with the holder", () => {
+    const { gate, state } = makeGate();
+    state.users[NEEL].roles = ["requester", "owner"];
+    state.resources.find((r) => r.id === H100).ownerSubs.push(NEEL);
+    const model = grantFor(gate, MAYA);
+    const gpus = grantFor(gate, KABIR, { resourceId: H100, purposes: ["Benchmark"], durationDays: 1, controls: [], gpuCount: 2 });
+    assert.deepEqual(gate.listGrants(NEEL).map((g) => g.id), [gpus.id], "an owner sees only grants on resources they own");
+    assert.equal(gate.listGrants(RISK).length, 2, "risk sees everything");
+    assert.equal(gate.listGrants(GUIDE).length, 2, "the manager sees grants of requests they decided");
+    for (const viewer of [RISK, GUIDE, NEEL]) assert.ok(gate.listGrants(viewer).every((g) => g.credential === null));
+    assert.match(gate.listGrants(MAYA)[0].credential, /^mock_key_/);
+    assert.ok(model);
+  });
+});
+
+describe("T14 role directory", () => {
+  const directory = parseDirectory({ "lead@example.test": ["manager"], "ops@example.test": { roles: ["owner", "admin"], owns: [H100] } });
+
+  test("roles come from the directory, matched on a NamoID-verified email only", () => {
+    const { state } = makeGate();
+    const gate = createGate({ state, clock: fixedClock(), directory });
+    assert.deepEqual(gate.upsertUser({ sub: "n|1", name: "Lead", email: "LEAD@example.test", emailVerified: false }).roles, ["requester"], "unverified email: no roles");
+    assert.deepEqual(gate.upsertUser({ sub: "n|1", name: "Lead", email: "lead@example.test", emailVerified: true }).roles, ["requester", "manager"]);
+    const ops = gate.upsertUser({ sub: "n|2", name: "Ops", email: "ops@example.test", emailVerified: true });
+    assert.deepEqual(ops.roles, ["requester", "owner", "admin"]);
+    assert.deepEqual(state.resources.filter((r) => r.ownerSubs.includes("n|2")).map((r) => r.id), [H100], "owns only what the directory says");
+    assert.equal(gate.history().filter((e) => e.action === "roles.directory").length, 2, "role changes are logged");
+  });
+
+  test("being taken out of the directory removes the roles", () => {
+    const { state } = makeGate();
+    createGate({ state, clock: fixedClock(), directory }).upsertUser({ sub: "n|1", name: "Lead", email: "lead@example.test", emailVerified: true });
+    const later = createGate({ state, clock: fixedClock(), directory: parseDirectory({}) });
+    assert.deepEqual(later.upsertUser({ sub: "n|1", name: "Lead", email: "lead@example.test", emailVerified: true }).roles, ["requester"]);
+  });
+
+  test("a directory with an unknown role is refused at startup", () => {
+    assert.throws(() => parseDirectory({ "x@example.test": ["superuser"] }), /unknown role/);
   });
 });

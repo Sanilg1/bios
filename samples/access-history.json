@@ -151,7 +151,7 @@
       "actorSub": "persona:maya",
       "allowed": false,
       "rule": "R4",
-      "receipt": "Denied (R4): grant_2 is approved for evaluation; this call was for \"internal-research\".",
+      "receipt": "Denied (R4): grant_2 is approved for \"evaluation\"; this call was for \"internal-research\".",
       "resourceId": "model:sentinel-eval-mock",
       "purpose": "internal-research",
       "grantId": "grant_2"

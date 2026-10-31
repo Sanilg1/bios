@@ -3,7 +3,7 @@ import express from "express";
 import session from "express-session";
 import helmet from "helmet";
 import { Denied, NotFound, RULES } from "./policy/rules.js";
-import { APPROVED_IMAGES, CONTROLS, MAX_DURATION_DAYS, PERSONAS, PURPOSES, ROLES } from "./policy/catalog.js";
+import { APPROVED_IMAGES, CONTROLS, MAX_DURATION_DAYS, PERSONAS, PURPOSE_LIMITS, ROLES } from "./policy/catalog.js";
 import { ATTACKS } from "./breakit/attacks.js";
 import { runAttack } from "./breakit/sandbox.js";
 import { route } from "./http.js";
@@ -91,17 +91,17 @@ export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://loca
       return;
     }
     const user = gate.upsertUser(identity);
-    res.json({ authenticated: true, user, via: identity.via, demoMode, now: gate.now() });
+    res.json({ authenticated: true, user: { sub: user.sub, name: user.name, email: user.email ?? null, emailVerified: identity.emailVerified === true, roles: user.roles }, via: identity.via, demoMode, now: gate.now() });
   }));
 
   const api = express.Router();
   api.use(requireUser);
 
   api.get("/meta", (_req, res) => {
-    res.json({ rules: RULES, purposes: PURPOSES, controls: CONTROLS, roles: ROLES, images: APPROVED_IMAGES, maxDurationDays: MAX_DURATION_DAYS, now: gate.now() });
+    res.json({ rules: RULES, purposeLimits: PURPOSE_LIMITS, controls: CONTROLS, roles: ROLES, images: APPROVED_IMAGES, maxDurationDays: MAX_DURATION_DAYS, now: gate.now() });
   });
   api.get("/resources", (_req, res) => res.json(gate.resources()));
-  api.get("/requests", (_req, res) => res.json(gate.listRequests()));
+  api.get("/requests", (req, res) => res.json(gate.listRequests(req.user.sub)));
   api.post("/requests", (req, res) => res.status(201).json(gate.createRequest(req.user.sub, req.body)));
   api.post("/requests/:id/reviews", (req, res) => res.json(gate.review(req.user.sub, req.params.id, req.body)));
   api.get("/grants", (req, res) => res.json(gate.listGrants(req.user.sub)));
@@ -110,19 +110,19 @@ export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://loca
   for (const method of ["patch", "put"]) api[method]("/grants/:id", (req, res) => res.json(gate.attemptExpiryChange(req.user.sub, req.params.id)));
   api.post("/grants/:id/extend", (req, res) => res.json(gate.attemptExpiryChange(req.user.sub, req.params.id)));
   api.post("/use", (req, res) => res.json(gate.use(req.user.sub, req.body)));
-  api.get("/jobs", (_req, res) => res.json(gate.listJobs()));
+  api.get("/jobs", (req, res) => res.json(gate.listJobs(req.user.sub)));
   // One dashboard per reviewer role: manager, risk, owner. Needs a NamoID session (R0) and the role (R11).
   api.get("/dashboards/:role", (req, res) => res.json(gate.dashboard(req.user.sub, req.params.role)));
   api.post("/jobs", (req, res) => res.status(201).json(gate.submitJob(req.user.sub, req.body)));
   // The UI gets the newest events (default 500); the export below stays complete.
-  api.get("/history", (req, res) => res.json(gate.history({ ...req.query, limit: req.query.limit ?? 500 })));
+  api.get("/history", (req, res) => res.json(gate.history({ ...req.query, limit: req.query.limit ?? 500 }, req.user.sub)));
   api.get("/history/export", (req, res) => {
     res.setHeader("content-disposition", 'attachment; filename="access-history.json"');
-    res.json({ exportedAt: new Date(gate.now()).toISOString(), note: "Mock data only. Approval ≠ safety.", events: gate.history(req.query) });
+    res.json({ exportedAt: new Date(gate.now()).toISOString(), note: "Mock data only. Approval ≠ safety.", events: gate.history(req.query, req.user.sub) });
   });
   api.get("/score/:sub", (req, res) => {
     const viewer = req.user;
-    const reviewer = ["manager", "risk", "owner"].some((role) => viewer.roles.includes(role));
+    const reviewer = ["manager", "risk", "owner", "admin"].some((role) => viewer.roles.includes(role));
     if (viewer.sub !== req.params.sub && !reviewer) throw new Denied("R11", "Denied (R11): only reviewers or the person themselves can see a score.");
     res.json(gate.score(req.params.sub));
   });
@@ -132,9 +132,16 @@ export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://loca
     res.json(await runAttack(req.params.id));
   }));
 
+  // The operator's tools. Roles are never self-assigned: they come from the role directory.
+  const requireAdmin = (req, _res, next) => {
+    if (!req.user.roles.includes("admin")) throw new Denied("R11", "Denied (R11): this needs the admin role.");
+    next();
+  };
+  api.get("/admin/people", requireAdmin, (_req, res) => res.json(gate.listUsers()));
+
+  // Simulation clock (demo deployments only): lets the operator show expiry without waiting days.
   if (demoMode) {
-    api.post("/demo/roles", (req, res) => res.json(gate.setRoles(req.user.sub, req.user.sub, req.body?.roles ?? [])));
-    api.post("/demo/clock", (req, res) => {
+    api.post("/demo/clock", requireAdmin, (req, res) => {
       const hours = Number(req.body?.hours);
       if (!(hours > 0 && hours <= 24 * 60)) throw new Denied("R12", "Denied (R12): advance between 1 hour and 60 days.");
       res.json(gate.demoAdvanceClock(req.user.sub, hours));

@@ -1,5 +1,9 @@
 # API contract
 
+**Who can see what.** `GET /api/requests`, `/api/grants`, `/api/jobs`, `/api/history` and the export are scoped by the server to the caller: a requester gets only their own records; a manager gets every request and the grants of requests they decided; an owner gets what happens on the resources they own; risk reviewers and the admin get everything. Credentials appear only for their holder. Roles come from `ROLE_DIRECTORY` (NamoID-verified email → roles), never from the browser.
+
+Purposes are free text (1–3 per request, 3–120 characters each). Use must name an approved purpose; matching ignores case and spacing.
+
 Every route except auth, `/api/health` and `/api/auth/options` needs a signed-in session. Without one: `401 { allowed:false, rule:"R0", receipt }`.
 
 State-changing requests (anything but GET/HEAD) must send our `Origin`, or `Sec-Fetch-Site: same-origin`. If a request carries a cookie and has neither, it gets `403 { error: "Invalid request origin" }`. Browsers send these headers automatically.
@@ -37,5 +41,5 @@ Denials always look like `{ allowed:false, rule:"R4", ruleTitle, receipt:"Denied
 | GET | `/api/score/:sub` | | R11 unless you're a reviewer or the person |
 | GET | `/api/breakit` | | |
 | POST | `/api/breakit/:id` | | runs in a fresh sandbox → `{ blocked, final, transcript }` |
-| POST | `/api/demo/roles` | `{ roles[] }` | `DEMO_MODE` only, audited |
-| POST | `/api/demo/clock` | `{ hours }` | `DEMO_MODE` only, audited |
+| GET | `/api/admin/people` | | everyone who has signed in, with roles. R11 unless admin |
+| POST | `/api/demo/clock` | `{ hours }` | simulated time: `DEMO_MODE` and admin only, logged (R11 otherwise) |

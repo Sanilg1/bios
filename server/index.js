@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/index.js";
-import { createClock, createGate } from "./policy/engine.js";
+import { createClock, createGate, parseDirectory } from "./policy/engine.js";
 import { loadState, snapshotter } from "./store.js";
 import { seedDemoData } from "./demo/seed.js";
 
@@ -42,7 +42,9 @@ if (!namoid) {
 
 const state = loadState(dataFile, { withPersonas: demoMode || devLogin });
 const clock = createClock(state.clockOffsetMs ?? 0);
-const gate = createGate({ state, clock, onChange: snapshotter(dataFile) });
+// Who holds which reviewer role: NamoID-verified email → roles (see .env.example).
+const directory = parseDirectory(process.env.ROLE_DIRECTORY?.trim() || null);
+const gate = createGate({ state, clock, onChange: snapshotter(dataFile), directory });
 
 // Demo mode starts with ten days of fictional activity, so every dashboard has something on it.
 // Only on an empty gate (Render's free tier starts empty after every sleep); SEED_DEMO=false turns it off.
@@ -64,5 +66,6 @@ const app = createApp({
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`Netra access gate on http://0.0.0.0:${port} (app URL ${appBaseUrl})`);
+  console.log(`Role directory: ${directory.size} account(s) with assigned roles.`);
   console.log(`NamoID Hosted Auth: ${namoid ? "on" : "off"} · dev login: ${devLogin ? "on" : "off"} · demo mode: ${demoMode ? "on" : "off"}`);
 });

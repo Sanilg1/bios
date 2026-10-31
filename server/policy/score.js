@@ -5,6 +5,7 @@ const HOUR = 60 * 60 * 1000;
 export const SCORE_WEIGHTS = Object.freeze({
   start: 50,
   cleanGrant: 5,
+  approvedAsAsked: 2,
   accurateCompute: 3,
   overAskedCompute: -3,
   deniedUse: -3,
@@ -20,6 +21,15 @@ export function computeScore(state, sub, t) {
   for (const event of state.audit) {
     if (event.actorSub === sub && USE_ACTIONS.has(event.action) && !event.allowed && event.grantId) {
       factors.push({ delta: SCORE_WEIGHTS.deniedUse, reason: `Denied use attempt on ${event.grantId} (${event.rule})`, at: event.at });
+    }
+  }
+
+  // Asking for what you actually need: approved with no reviewer having to narrow it.
+  for (const request of state.requests) {
+    if (request.requesterSub !== sub || request.status !== "approved") continue;
+    const narrowed = Object.values(request.reviews).some((r) => r?.decision === "narrow");
+    if (!narrowed) {
+      factors.push({ delta: SCORE_WEIGHTS.approvedAsAsked, reason: `${request.id} was approved exactly as asked`, at: new Date(request.createdAt).toISOString() });
     }
   }
 

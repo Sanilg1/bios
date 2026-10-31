@@ -1,5 +1,7 @@
-// Mock resources, purposes and controls. Everything here is fake by design.
-export const PURPOSES = ["evaluation", "internal-research", "prototype-demo", "fine-tuning", "large-scale-training"];
+// Mock resources and controls. Everything here is fake by design.
+// Purposes are free text written by the requester (see engine.js: normalizePurpose). Each resource
+// lists a few suggestions the form can offer; they are examples, not a whitelist.
+export const PURPOSE_LIMITS = Object.freeze({ maxPurposes: 3, minLength: 3, maxLength: 120 });
 
 export const CONTROLS = [
   "no-export",
@@ -22,7 +24,9 @@ export const SLOTS = ["manager", "risk", "owner"];
 // Which role may fill which review slot.
 export const SLOT_ROLE = { manager: "manager", risk: "risk", owner: "owner" };
 
-export const ROLES = ["requester", "manager", "risk", "owner"];
+// requester: everyone who signs in. manager / risk / owner: reviewers, from the role directory.
+// admin: the gate operator (sees everyone and the people directory; never decides requests).
+export const ROLES = ["requester", "manager", "risk", "owner", "admin"];
 
 export function seedResources(ownerSubs = []) {
   return [
@@ -31,7 +35,7 @@ export function seedResources(ownerSubs = []) {
       name: "Sentinel (mock sensitive model)",
       type: "model",
       description: "The fictional sensitive model from Maya's story. Returns canned fake scores.",
-      allowedPurposes: ["evaluation", "internal-research", "prototype-demo"],
+      suggestedPurposes: ["evaluation", "internal-research", "prototype-demo"],
       ownerSubs: [...ownerSubs],
     },
     {
@@ -39,7 +43,7 @@ export function seedResources(ownerSubs = []) {
       name: "Summarizer (mock)",
       type: "model",
       description: "Returns lorem-ipsum summaries.",
-      allowedPurposes: ["evaluation", "internal-research", "prototype-demo", "fine-tuning"],
+      suggestedPurposes: ["evaluation", "internal-research", "prototype-demo", "fine-tuning"],
       ownerSubs: [...ownerSubs],
     },
     {
@@ -47,7 +51,7 @@ export function seedResources(ownerSubs = []) {
       name: "Synthetic support tickets",
       type: "dataset",
       description: "50 generated rows, each prefixed SYNTHETIC.",
-      allowedPurposes: ["evaluation", "internal-research", "fine-tuning"],
+      suggestedPurposes: ["evaluation", "internal-research", "fine-tuning"],
       ownerSubs: [...ownerSubs],
     },
     {
@@ -55,7 +59,7 @@ export function seedResources(ownerSubs = []) {
       name: "Synthetic claims sample",
       type: "dataset",
       description: "Generated rows labelled SYNTHETIC.",
-      allowedPurposes: ["evaluation", "internal-research"],
+      suggestedPurposes: ["evaluation", "internal-research"],
       ownerSubs: [...ownerSubs],
     },
     {
@@ -63,7 +67,7 @@ export function seedResources(ownerSubs = []) {
       name: "H100 pool (mock, 8 GPUs)",
       type: "compute",
       description: "A fake pool of 8 H100s. Nothing runs on real hardware; jobs are records with a fake progress bar.",
-      allowedPurposes: ["evaluation", "internal-research", "fine-tuning", "large-scale-training"],
+      suggestedPurposes: ["evaluation", "internal-research", "fine-tuning", "large-scale-training"],
       maxGpus: 8,
       ownerSubs: [...ownerSubs],
     },
@@ -76,10 +80,10 @@ export const PERSONAS = [
   { sub: "persona:kabir", name: "Kabir Singh", title: "Final-year student (requester)", roles: ["requester"] },
   { sub: "persona:priya", name: "Priya Nair", title: "PhD student (requester)", roles: ["requester"] },
   { sub: "persona:arjun", name: "Arjun Desai", title: "Research engineer (requester)", roles: ["requester"] },
-  { sub: "persona:guide", name: "Dr. Anjali Mehta", title: "Faculty guide (manager)", roles: ["manager"] },
-  { sub: "persona:risk", name: "Farhan Ali", title: "IT security (risk reviewer)", roles: ["risk"] },
-  { sub: "persona:ira", name: "Ira Kapoor", title: "HPC admin (resource owner)", roles: ["owner"] },
-  { sub: "persona:neel", name: "Neel Batra", title: "Manager + risk reviewer", roles: ["manager", "risk"] },
+  { sub: "persona:guide", name: "Dr. Anjali Mehta", title: "Faculty guide (manager)", roles: ["requester", "manager"] },
+  { sub: "persona:risk", name: "Farhan Ali", title: "IT security (risk reviewer)", roles: ["requester", "risk"] },
+  { sub: "persona:ira", name: "Ira Kapoor", title: "HPC admin (resource owner)", roles: ["requester", "owner"] },
+  { sub: "persona:neel", name: "Neel Batra", title: "Manager + risk reviewer", roles: ["requester", "manager", "risk"] },
 ];
 
 export const PERSONA_OWNER = "persona:ira";

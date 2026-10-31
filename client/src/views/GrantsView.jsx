@@ -2,43 +2,23 @@ import { useState } from "react";
 import { api, remaining, when } from "../api.js";
 import { Chips, Receipt, Status } from "../ui.jsx";
 
-export function GrantsView({ ctx }) {
-  const { grants, jobs, user } = ctx;
-  const mine = grants.filter((g) => g.holderSub === user.sub);
-  const active = grants.filter((g) => g.status === "active" || g.status === "scheduled");
-  const ended = grants.filter((g) => g.status === "expired" || g.status === "revoked");
+const OTHER = "__other__";
 
-  return (
-    <div>
-      {mine.filter((g) => g.status === "active").map((g) => (
-        <UseConsole key={g.id} grant={g} ctx={ctx} />
-      ))}
-
-      <section className="card">
-        <h2>Active grants</h2>
-        <GrantTable grants={active} ctx={ctx} empty="No active grants." />
-      </section>
-
-      <section className="card">
-        <h2>Mock H100 jobs</h2>
-        {jobs.length === 0 && <p className="muted">No jobs yet. Nothing here touches real GPUs.</p>}
-        {jobs.map((j) => (
-          <div key={j.id} className="job">
-            <div className="item-head">
-              <strong>{j.id}</strong> · {j.holderName} · {j.gpus}× H100 · {j.purpose} · <code>{j.image}</code> <Status value={j.status} />
-            </div>
-            <progress className={`p-${j.status}`} max="1" value={j.progress} />
-            {j.killReason && <span className="small denied-text">killed: {j.killReason}</span>}
-          </div>
-        ))}
-      </section>
-
-      <section className="card">
-        <h2>Ended grants</h2>
-        <GrantTable grants={ended} ctx={ctx} empty="None yet." />
-      </section>
+// Mock H100 jobs with live progress. Killed jobs say why.
+export function JobsList({ jobs, empty = "No jobs yet. Nothing here touches real GPUs." }) {
+  if (!jobs.length) return <p className="muted">{empty}</p>;
+  return jobs.map((j) => (
+    <div key={j.id} className="job">
+      <div className="item-head">
+        <span>
+          <strong>{j.id}</strong> · {j.holderName} · {j.gpus}× H100 · “{j.purpose}” · <code>{j.image}</code>
+        </span>
+        <Status value={j.status} />
+      </div>
+      <progress className={`p-${j.status}`} max="1" value={j.progress} />
+      {j.killReason && <span className="small denied-text">killed: {j.killReason}</span>}
     </div>
-  );
+  ));
 }
 
 export function GrantTable({ grants, ctx, empty }) {
@@ -115,10 +95,13 @@ export function GrantTable({ grants, ctx, empty }) {
   );
 }
 
-function UseConsole({ grant, ctx }) {
+// Use an active grant. Pick an approved purpose, or type another one to see it refused (R4).
+export function UseConsole({ grant, ctx }) {
   const { meta } = ctx;
   const compute = grant.resourceType === "compute";
-  const [purpose, setPurpose] = useState(grant.purposes[0]);
+  const [choice, setChoice] = useState(grant.purposes[0]);
+  const [other, setOther] = useState("");
+  const purpose = choice === OTHER ? other : choice;
   const [input, setInput] = useState("Score this fake transcript");
   const [job, setJob] = useState({ gpus: grant.gpuCount ?? 1, image: meta.images[0], hours: 6 });
   const [result, setResult] = useState(null);
@@ -145,14 +128,21 @@ function UseConsole({ grant, ctx }) {
       <div className="row">
         <label>
           Purpose of this call
-          <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>
-            {meta.purposes.map((p) => (
+          <select value={choice} onChange={(e) => setChoice(e.target.value)}>
+            {grant.purposes.map((p) => (
               <option key={p} value={p}>
-                {p} {grant.purposes.includes(p) ? "" : "(not approved)"}
+                {p}
               </option>
             ))}
+            <option value={OTHER}>Something else…</option>
           </select>
         </label>
+        {choice === OTHER && (
+          <label className="grow">
+            Other purpose
+            <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Not on the grant, so it will be refused (R4)" />
+          </label>
+        )}
         {compute ? (
           <>
             <label>

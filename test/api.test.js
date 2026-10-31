@@ -59,6 +59,21 @@ describe("T7 auth boundary (HTTP)", () => {
     assert.equal((await api.as("persona:guide").get("/api/dashboards/admin")).status, 404);
   });
 
+  test("over HTTP, a requester gets only their own data, can't pick roles, and can't open the people directory", async () => {
+    const { api } = sandbox;
+    await api.as("persona:kabir").post("/api/requests", { resourceId: "model:summarizer-mock", purposes: ["Summarize meeting notes"], durationDays: 2, controls: [], justification: "kabir only" });
+    for (const path of ["/api/requests", "/api/grants", "/api/jobs", "/api/history"]) {
+      const res = await api.as("persona:maya").get(path);
+      assert.equal(res.status, 200, path);
+      assert.ok(!JSON.stringify(res.body).includes("kabir only"), `${path} leaks another person's request`);
+      assert.ok(!JSON.stringify(res.body).includes("persona:kabir"), `${path} leaks another person`);
+    }
+    assert.equal((await api.as("persona:maya").post("/api/demo/roles", { roles: ["risk"] })).status, 404, "no self-assigned roles");
+    const people = await api.as("persona:risk").get("/api/admin/people");
+    assert.equal(people.status, 403);
+    assert.equal(people.body.rule, "R11");
+  });
+
   test("cross-site origins can't change state", async () => {
     const res = await fetch(`${sandbox.baseUrl}/api/requests`, {
       method: "POST",

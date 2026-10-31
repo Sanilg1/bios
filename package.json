@@ -11,7 +11,9 @@
     "start": "node --env-file-if-exists=.env server/index.js",
     "test": "node --test \"test/**/*.test.js\"",
     "sample-history": "node scripts/export-sample-history.mjs",
-    "landing": "python3 -m http.server 8080"
+    "landing": "python3 -m http.server 8080",
+    "e2e:login": "node scripts/e2e-namoid-login.mjs",
+    "e2e:demo": "node scripts/e2e-namoid-demo.mjs"
   },
   "engines": {
     "node": ">=24"
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",
     "concurrently": "^9.0.0",
+    "playwright": "^1.64.1",
     "vite": "^6.0.0"
   }
 }
