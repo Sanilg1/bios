@@ -107,7 +107,7 @@ This is a responsible-AI challenge, so we treated our own scoring feature as som
 
 | Risk with a credit-style score | Our guardrail |
 |---|---|
-| A score quietly replacing human judgement | **Advisory only.** It never approves, rejects, narrows, or skips a reviewer. A test proves a score of 0 or 100 changes nothing. |
+| A score quietly replacing human judgement | **Advisory only.** It never approves, rejects, narrows, or skips a reviewer. A test proves a score below 20 and one above 60 get identical reviews and grants. |
 | A black-box number | Always shown **with its reasons**, e.g. *"+5 grant #12 ended cleanly"* |
 | Punishing newcomers | New users start **neutral at 50**, labelled *"No history yet"* |
 | Bias from identity data | Built **only** from in-app behaviour, never name, email, department, year, or profile data |

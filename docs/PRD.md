@@ -1,4 +1,4 @@
-# PRD — Responsible AI Access Gate
+t# PRD — Responsible AI Access Gate
 
 > **Team:** Netra · **Event:** [BIOS Hackathon](https://bios.notyouraverage.xyz), FORGE track (NamoID industry brief)
 > **Status:** Draft v0.4 (adds mock H100 pool, college-cluster story, decision receipts, break-it panel, advisory confidence score), open for team review. Comment on the PR, edit this file, or bring it up at kickoff.
