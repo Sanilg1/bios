@@ -6,6 +6,7 @@ import { createApp } from "./app.js";
 import { createAuth } from "./auth/index.js";
 import { createClock, createGate } from "./policy/engine.js";
 import { loadState, snapshotter } from "./store.js";
+import { seedDemoData } from "./demo/seed.js";
 
 const production = process.env.NODE_ENV === "production";
 const flag = (name) => process.env[name]?.trim().toLowerCase() === "true";
@@ -42,6 +43,13 @@ if (!namoid) {
 const state = loadState(dataFile, { withPersonas: demoMode || devLogin });
 const clock = createClock(state.clockOffsetMs ?? 0);
 const gate = createGate({ state, clock, onChange: snapshotter(dataFile) });
+
+// Demo mode starts with ten days of fictional activity, so every dashboard has something on it.
+// Only on an empty gate (Render's free tier starts empty after every sleep); SEED_DEMO=false turns it off.
+if (demoMode && state.requests.length === 0 && process.env.SEED_DEMO?.trim().toLowerCase() !== "false") {
+  seedDemoData(gate, clock);
+  console.log(`Seeded demo data: ${state.requests.length} requests, ${state.grants.length} grants, ${state.audit.length} history events.`);
+}
 
 const clientDist = fileURLToPath(new URL("../client/dist", import.meta.url));
 const app = createApp({

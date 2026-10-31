@@ -74,6 +74,8 @@ export function seedResources(ownerSubs = []) {
 export const PERSONAS = [
   { sub: "persona:maya", name: "Maya Rao", title: "Researcher (requester)", roles: ["requester"] },
   { sub: "persona:kabir", name: "Kabir Singh", title: "Final-year student (requester)", roles: ["requester"] },
+  { sub: "persona:priya", name: "Priya Nair", title: "PhD student (requester)", roles: ["requester"] },
+  { sub: "persona:arjun", name: "Arjun Desai", title: "Research engineer (requester)", roles: ["requester"] },
   { sub: "persona:guide", name: "Dr. Anjali Mehta", title: "Faculty guide (manager)", roles: ["manager"] },
   { sub: "persona:risk", name: "Farhan Ali", title: "IT security (risk reviewer)", roles: ["risk"] },
   { sub: "persona:ira", name: "Ira Kapoor", title: "HPC admin (resource owner)", roles: ["owner"] },
