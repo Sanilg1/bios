@@ -8,13 +8,13 @@ import { ATTACKS } from "./breakit/attacks.js";
 import { runAttack } from "./breakit/sandbox.js";
 import { route } from "./http.js";
 
-export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://localhost:5174", demoMode = false, staticDir = null }) {
+export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://localhost:5174", demoMode = false, staticDir = null, trustProxy = 1 }) {
   const app = express();
   const secure = appBaseUrl.startsWith("https://");
   const appOrigin = new URL(appBaseUrl).origin;
 
   app.disable("x-powered-by");
-  app.set("trust proxy", 1);
+  app.set("trust proxy", trustProxy);
   app.use(
     helmet({
       contentSecurityPolicy: {

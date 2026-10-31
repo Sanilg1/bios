@@ -15,6 +15,9 @@ const port = Number(process.env.PORT ?? "4000");
 const demoMode = flag("DEMO_MODE");
 const devLogin = flag("DEV_LOGIN");
 const dataFile = process.env.DATA_FILE ?? "data/state.json";
+// Proxy hops in front of Express: 1 locally or on Railway alone, 2 behind Vercel → Railway.
+const trustProxy = Number(process.env.TRUST_PROXY ?? "1");
+if (!Number.isInteger(trustProxy) || trustProxy < 0) throw new Error("TRUST_PROXY must be a whole number of proxy hops");
 
 if (production && devLogin) {
   throw new Error("DEV_LOGIN is refused in production. Sign-in must go through NamoID Hosted Auth.");
@@ -48,6 +51,7 @@ const app = createApp({
   appBaseUrl,
   demoMode,
   staticDir: existsSync(clientDist) ? clientDist : null,
+  trustProxy,
 });
 
 app.listen(port, "0.0.0.0", () => {

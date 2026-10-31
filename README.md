@@ -136,6 +136,34 @@ npm run build && NODE_ENV=production npm start   # one process serves API + buil
 
 `npm run landing` still serves the template's static landing page (`index.html`) on :8080.
 
+## Deploy (Vercel + Railway)
+
+```
+Browser ──▶ Vercel (React UI, static)  ── /api/* rewrite ──▶  Railway (Express API + gate state)
+```
+
+Vercel serves the built UI and forwards every `/api/*` request to Railway ([vercel.json](vercel.json)). The browser only ever talks to the Vercel domain, so the session cookie is first-party and the NamoID callback lives on the Vercel URL. The API runs on Railway rather than as a Vercel function because the gate keeps sessions and state in one long-running process.
+
+1. **Push** this repo to GitHub.
+2. **Pick the Vercel domain:** `vercel link`, then create a project (e.g. `netra-gate` → `https://netra-gate.vercel.app`).
+3. **Railway:** New project → Deploy from GitHub repo → this repo. [railway.json](railway.json) sets `npm start` and the `/api/health` health check. Under *Variables*, set:
+
+   | Variable | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `APP_BASE_URL` | the Vercel URL from step 2, no trailing slash |
+   | `SESSION_SECRET` | 48+ random characters |
+   | `NAMOID_CLIENT_ID` / `NAMOID_CLIENT_SECRET` | from the NamoID Console |
+   | `DEMO_MODE` | `true` (judges can pick roles and move the demo clock; both audited) |
+   | `TRUST_PROXY` | `2` (Vercel and Railway's edge) |
+
+   Then *Settings → Networking → Generate Domain*. Production refuses to start without the NamoID and session variables, and refuses `DEV_LOGIN`.
+4. **Point Vercel at Railway:** replace `RAILWAY_HOST` in [vercel.json](vercel.json) with the Railway domain (e.g. `bios-production.up.railway.app`), commit, then `vercel --prod`.
+5. **NamoID Console:** add the callback `https://<vercel-domain>/api/auth/callback`, and the Vercel URL as the post-logout redirect if the Console asks.
+6. **Check:** `curl https://<vercel-domain>/api/health` → `{"status":"ok"}`, then sign in through NamoID.
+
+Railway's disk resets on every redeploy, which clears requests, grants and history. To keep them, attach a Railway volume at `/app/data`.
+
 ## What works
 
 - **Sign-in** through NamoID Hosted Auth (server-side OIDC + PKCE), with the session, refresh and logout flows from the official example.
@@ -159,7 +187,7 @@ npm run build && NODE_ENV=production npm start   # one process serves API + buil
 
 - The NamoID Hosted Auth flow is implemented against the official SDK and example, and the SDK reaches NamoID's servers. It still needs a real Console Client ID to complete an end-to-end sign-in; that is the first thing to configure.
 - Roles in demo mode are self-assigned (audited). Production would need an admin-managed role table.
-- State is in memory with a JSON snapshot on disk, and sessions use the in-memory `express-session` store. That's fine for a single-process demo, not for production.
+- State is in memory with a JSON snapshot on disk, and sessions use the in-memory `express-session` store. That's fine for a single-process demo, not for production. It's also why the API runs as one Railway process, not as Vercel functions.
 - The demo clock control exists only with `DEMO_MODE=true` and logs every jump.
 - Purpose enforcement is a simulation. Callers *declare* a purpose; a real system would need technical controls behind that declaration.
 - The mock-to-real path (credential broker, scheduler integration, incident process) is designed, not built.
