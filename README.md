@@ -1,4 +1,4 @@
-# [Project Title]
+# Responsible AI Access Gate
 
 **[Powered by NamoID](https://namoid.in)** ·
 [NamoID documentation](https://docs.namoid.in) ·
@@ -7,7 +7,7 @@
 > Built on the NamoID identity platform for the **NamoID Community Challenges** program.
 
 This repository is a contributor-owned response to the
-`[challenge-id]` problem statement. It was created from the official
+`responsible-ai-access-gate` problem statement. It was created from the official
 [NamoID challenge template](https://github.com/namoidhq/namoid-challenge-template).
 
 This project is an independent community build. It is not an official
@@ -25,8 +25,8 @@ credentials, authorization codes, or tokens.
 
 ## Community project metadata
 
-- **Challenge ID:** `[challenge-id]`
-- **Contributor:** [Contributor Name]
+- **Challenge ID:** `responsible-ai-access-gate`
+- **Contributor:** Team Netra
 - **Live demo:** Add URL
 - **Final commit:** Add the full 40-character SHA at submission time
 - **Time spent:** Add estimate
@@ -38,11 +38,11 @@ credentials, authorization codes, or tokens.
 2. In the new repository, run:
 
 ```bash
-npm run setup -- --challenge=[challenge-id] --name="Your Name" --title="Your Project" --repo=https://github.com/you/project
+npm run setup -- --challenge=responsible-ai-access-gate --name="Your Name" --title="Your Project" --repo=https://github.com/you/project
 npm run check
 ```
 
-Replace `[challenge-id]` with the ID shown in the selected problem statement.
+Replace `responsible-ai-access-gate` with the ID shown in the selected problem statement.
 Setup removes
 the remaining template placeholders and records machine-readable attribution in
 [`namoid-challenge.json`](./namoid-challenge.json).
