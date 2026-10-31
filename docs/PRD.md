@@ -195,6 +195,9 @@ Every allow or deny, at review time and at use time, returns a plain-English **r
 | R8 | Expiry is immutable, so more time needs a new request |
 | R9 | Only the resource's owner fills the owner slot |
 | R10 | Images must be on the allowlist when `approved-images-only` is set |
+| R11 | This action needs the matching role *(added while building)* |
+| R12 | Requests and decisions must be complete and within the resource's limits *(added while building)* |
+| R13 | A grant only works for its holder and its resource *(added while building)* |
 
 - AC: Every denial returns `{ allowed: false, rule: "R4", receipt: "Denied: your grant is approved for evaluation; this call was for internal-research." }`.
 - AC: Every allow returns a receipt too, listing the grant, purposes, controls, expiry, and *"Authorized under these conditions. This does not mean the use is safe."*
