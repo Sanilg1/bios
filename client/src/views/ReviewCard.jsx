@@ -5,38 +5,8 @@ import { SlotSummary } from "./RequestView.jsx";
 
 const SLOT_ROLE = { manager: "manager", risk: "risk", owner: "owner" };
 
-export function ReviewView({ ctx }) {
-  const { requests, user } = ctx;
-  const open = requests.filter((r) => r.status === "in_review");
-  const decided = requests.filter((r) => r.status !== "in_review").slice(0, 8);
-  return (
-    <div>
-      <p className="note">
-        Every undecided slot shows its buttons to everyone on purpose: the <strong>server</strong> decides who may fill it, and every attempt gets a receipt.
-        You can't review your own request, and one person fills one slot.
-      </p>
-      {open.length === 0 && <p className="muted">No requests waiting for review.</p>}
-      {open.map((r) => (
-        <ReviewCard key={r.id} request={r} ctx={ctx} mine={r.requesterSub === user.sub} />
-      ))}
-      {decided.length > 0 && (
-        <section className="card">
-          <h2>Recently decided</h2>
-          {decided.map((r) => (
-            <article key={r.id} className="item">
-              <div className="item-head">
-                <strong>{r.id}</strong> · {r.requesterName} · {r.resourceName} <Status value={r.status} />
-              </div>
-              <SlotSummary request={r} />
-            </article>
-          ))}
-        </section>
-      )}
-    </div>
-  );
-}
-
-function ReviewCard({ request, ctx, mine }) {
+// One request with the slot forms a reviewer may use. onlySlot limits it to one dashboard's slot.
+export function ReviewCard({ request, ctx, mine, onlySlot }) {
   const { user, meta } = ctx;
   const [result, setResult] = useState(null);
   const eff = request.effective;
@@ -67,7 +37,7 @@ function ReviewCard({ request, ctx, mine }) {
       </div>
       <div className="slot-actions">
         {["manager", "risk", "owner"]
-          .filter((slot) => !request.reviews[slot])
+          .filter((slot) => !request.reviews[slot] && (!onlySlot || slot === onlySlot))
           .map((slot) => (
             <SlotForm
               key={slot}

@@ -58,7 +58,7 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 
 ## Testing
 
-`npm test` runs 47 tests on Node's built-in runner with a fixed clock and no network (the table below, plus [test/hardening.test.js](test/hardening.test.js) for token refresh and snapshot failures):
+`npm test` runs 52 tests on Node's built-in runner with a fixed clock and no network (the table below, plus [test/hardening.test.js](test/hardening.test.js) for token refresh and snapshot failures):
 
 | Group | What it proves |
 |---|---|
@@ -72,6 +72,7 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 | T8 Receipts | Allows say "not a safety guarantee"; history is append-only; no credentials in logs |
 | T9 Score is advisory | A score below 20 and one above 60 get identical review requirements and grants |
 | T10 Break-it parity | Every panel attack is blocked by its expected rule |
+| T11 Reviewer dashboards | Each dashboard needs its role (R11, logged); a reviewer sees only what they may act on; owners see only their resources; no credentials leak |
 
 **Do the tests bite?** [scripts/mutation-check.mjs](scripts/mutation-check.mjs) removes each rule from a scratch copy, one at a time, and reruns the suite. A control run without mutation must pass first. Our first version of this script had a bug: it reported every mutant as "caught" because the test runner was failing for an unrelated reason. Adding the control run exposed it. Results are in [samples/mutation-report.md](samples/mutation-report.md): all 16 mutants are caught.
 

@@ -555,6 +555,77 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     return state.jobs.map((j) => viewJob(j, t)).reverse();
   }
 
+  // ---------- per-reviewer dashboards ----------
+
+  // One dashboard per review slot. The server decides what each reviewer sees: holding the
+  // slot's role is rule R11, and a refused attempt is logged. Opening a dashboard is a read,
+  // so allowed opens aren't logged (the UI polls every few seconds).
+  function dashboard(viewerSub, role) {
+    if (!SLOTS.includes(role)) throw new NotFound(`Dashboard "${role}"`);
+    const slot = role;
+    if (!hasRole(viewerSub, SLOT_ROLE[slot])) {
+      try {
+        deny("R11", `The ${slot} dashboard needs the ${SLOT_ROLE[slot]} role.`);
+      } catch (error) {
+        record({ action: "dashboard.open", actorSub: viewerSub, allowed: false, rule: error.rule, receipt: error.receipt, dashboard: slot });
+        onChange(state);
+        throw error;
+      }
+    }
+
+    const t = now();
+    const ownedIds = new Set(state.resources.filter((r) => r.ownerSubs.includes(viewerSub)).map((r) => r.id));
+    const inScope = (resourceId) => slot !== "owner" || ownedIds.has(resourceId);
+    const live = (g) => ["active", "scheduled"].includes(grantStatus(g, t));
+
+    // Requests whose slot is still open, split by what this viewer is allowed to do with them.
+    const waiting = { actionable: [], yours: [], otherSlot: [] };
+    for (const request of [...state.requests].reverse()) {
+      if (request.status !== "in_review" || request.reviews[slot] || !inScope(request.resourceId)) continue;
+      const view = viewRequest(request);
+      if (request.requesterSub === viewerSub) waiting.yours.push(view); // R1
+      else if (SLOTS.some((s) => request.reviews[s]?.reviewerSub === viewerSub)) waiting.otherSlot.push(view); // R2
+      else waiting.actionable.push(view);
+    }
+    const decidedByYou = state.requests
+      .filter((r) => r.reviews[slot]?.reviewerSub === viewerSub)
+      .slice(-10)
+      .reverse()
+      .map(viewRequest);
+
+    const result = { role: slot, now: t, ...waiting, decidedByYou };
+
+    if (slot === "risk") {
+      result.activeGrants = state.grants.filter(live).reverse().map((g) => viewGrant(g, viewerSub, t));
+      result.runningJobs = state.jobs.filter((j) => jobStatus(j, state.grants.find((g) => g.id === j.grantId), t) === "running").map((j) => viewJob(j, t));
+      result.recentDenials = state.audit.filter((e) => !e.allowed).slice(-15).reverse();
+    }
+
+    if (slot === "owner") {
+      result.resources = state.resources
+        .filter((r) => ownedIds.has(r.id))
+        .map((resource) => {
+          const grants = state.grants.filter((g) => g.resourceId === resource.id && live(g));
+          const running = state.jobs.filter((j) => {
+            const grant = state.grants.find((g) => g.id === j.grantId);
+            return grant.resourceId === resource.id && jobStatus(j, grant, t) === "running";
+          });
+          return {
+            id: resource.id,
+            name: resource.name,
+            type: resource.type,
+            maxGpus: resource.maxGpus ?? null,
+            liveGrants: grants.length,
+            gpusGranted: resource.type === "compute" ? grants.reduce((sum, g) => sum + (g.gpuCount ?? 0), 0) : null,
+            gpusRunning: resource.type === "compute" ? running.reduce((sum, j) => sum + j.gpus, 0) : null,
+          };
+        });
+      result.activeGrants = state.grants.filter((g) => ownedIds.has(g.resourceId) && live(g)).reverse().map((g) => viewGrant(g, viewerSub, t));
+    }
+
+    return result;
+  }
+
   function history(filter = {}) {
     const events = state.audit
       .filter((e) => !filter.requestId || e.requestId === filter.requestId)
@@ -595,6 +666,7 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
     listGrants,
     listJobs,
     history,
+    dashboard,
     score,
     demoAdvanceClock,
     resources: () => state.resources,

@@ -342,3 +342,76 @@ describe("T9 confidence score stays advisory", () => {
     assert.deepEqual(outcome(KABIR), outcome(MAYA));
   });
 });
+
+describe("T11 reviewer dashboards", () => {
+  test("each dashboard needs its role, and a refused open is logged", () => {
+    const { gate } = makeGate();
+    assertDenied(() => gate.dashboard(MAYA, "manager"), "R11");
+    assertDenied(() => gate.dashboard(GUIDE, "risk"), "R11");
+    assertDenied(() => gate.dashboard(RISK, "owner"), "R11");
+    const last = gate.history().at(-1);
+    assert.equal(last.action, "dashboard.open");
+    assert.equal(last.allowed, false);
+    assert.equal(last.rule, "R11");
+    assert.throws(() => gate.dashboard(GUIDE, "admin"), /not found/);
+    assert.equal(gate.dashboard(GUIDE, "manager").role, "manager");
+  });
+
+  test("a manager sees what they can act on, apart from their own requests and ones where they hold another slot", () => {
+    const { gate, state } = makeGate();
+    state.users[GUIDE].roles.push("requester");
+    const fromMaya = request(gate, MAYA);
+    const fromGuide = request(gate, GUIDE);
+    const ids = (list) => list.map((r) => r.id);
+
+    approve(gate, fromMaya.id, "risk", NEEL);
+    const neel = gate.dashboard(NEEL, "manager");
+    assert.ok(ids(neel.otherSlot).includes(fromMaya.id), "Neel already filled the risk slot (R2)");
+    assert.ok(!ids(neel.actionable).includes(fromMaya.id));
+
+    const guide = gate.dashboard(GUIDE, "manager");
+    assert.deepEqual(ids(guide.actionable), [fromMaya.id]);
+    assert.deepEqual(ids(guide.yours), [fromGuide.id], "own requests are set apart (R1)");
+
+    approve(gate, fromMaya.id, "manager", GUIDE);
+    const after = gate.dashboard(GUIDE, "manager");
+    assert.deepEqual(ids(after.actionable), []);
+    assert.deepEqual(ids(after.decidedByYou), [fromMaya.id]);
+  });
+
+  test("a resource owner sees only the resources they own, with GPU use", () => {
+    const { gate, state } = makeGate();
+    state.users[NEEL].roles.push("owner");
+    state.resources.find((r) => r.id === H100).ownerSubs.push(NEEL);
+    const model = request(gate, MAYA);
+    const gpus = request(gate, KABIR, { resourceId: H100, purposes: ["evaluation"], durationDays: 1, controls: [], gpuCount: 4 });
+
+    const neel = gate.dashboard(NEEL, "owner");
+    assert.deepEqual(neel.actionable.map((r) => r.id), [gpus.id]);
+    assert.deepEqual(neel.resources.map((r) => r.id), [H100]);
+    assert.deepEqual(gate.dashboard(IRA, "owner").actionable.map((r) => r.id), [gpus.id, model.id]);
+
+    approve(gate, gpus.id, "manager", GUIDE);
+    approve(gate, gpus.id, "risk", RISK);
+    const grant = approve(gate, gpus.id, "owner", NEEL).grant;
+    gate.submitJob(KABIR, { credential: grant.credential, gpus: 3, purpose: "evaluation", image: "netra/eval-harness:1.0", hours: 2 });
+    const pool = gate.dashboard(NEEL, "owner").resources[0];
+    assert.equal(pool.liveGrants, 1);
+    assert.equal(pool.gpusGranted, 4);
+    assert.equal(pool.gpusRunning, 3);
+    assert.equal(gate.dashboard(NEEL, "owner").activeGrants[0].credential, null, "owners never see the holder's credential");
+  });
+
+  test("a risk reviewer sees live grants, running jobs and recent denials", () => {
+    const { gate } = makeGate();
+    const grant = grantFor(gate);
+    assertDenied(() => gate.use(MAYA, { credential: grant.credential, resourceId: SENTINEL, purpose: "fine-tuning" }), "R4");
+    const risk = gate.dashboard(RISK, "risk");
+    assert.deepEqual(risk.activeGrants.map((g) => g.id), [grant.id]);
+    assert.equal(risk.activeGrants[0].credential, null);
+    assert.equal(risk.recentDenials[0].rule, "R4");
+    assert.ok(!JSON.stringify(risk).includes(grant.credential), "no credentials anywhere on the risk dashboard");
+    gate.revoke(RISK, grant.id, "incident");
+    assert.deepEqual(gate.dashboard(RISK, "risk").activeGrants, []);
+  });
+});

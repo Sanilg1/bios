@@ -46,6 +46,19 @@ describe("T7 auth boundary (HTTP)", () => {
     assert.equal(theirs.body[0].credential, null);
   });
 
+  test("each reviewer dashboard needs its role over HTTP too", async () => {
+    const { api } = sandbox;
+    const denied = await api.as("persona:maya").get("/api/dashboards/risk");
+    assert.equal(denied.status, 403);
+    assert.equal(denied.body.rule, "R11");
+    for (const [role, sub] of [["manager", "persona:guide"], ["risk", "persona:risk"], ["owner", "persona:ira"]]) {
+      const ok = await api.as(sub).get(`/api/dashboards/${role}`);
+      assert.equal(ok.status, 200, role);
+      assert.equal(ok.body.role, role);
+    }
+    assert.equal((await api.as("persona:guide").get("/api/dashboards/admin")).status, 404);
+  });
+
   test("cross-site origins can't change state", async () => {
     const res = await fetch(`${sandbox.baseUrl}/api/requests`, {
       method: "POST",

@@ -41,7 +41,7 @@ export function GrantsView({ ctx }) {
   );
 }
 
-function GrantTable({ grants, ctx, empty }) {
+export function GrantTable({ grants, ctx, empty }) {
   const { user } = ctx;
   const [result, setResult] = useState(null);
   const canRevoke = user.roles.includes("risk") || user.roles.includes("owner");

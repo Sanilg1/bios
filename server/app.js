@@ -111,6 +111,8 @@ export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://loca
   api.post("/grants/:id/extend", (req, res) => res.json(gate.attemptExpiryChange(req.user.sub, req.params.id)));
   api.post("/use", (req, res) => res.json(gate.use(req.user.sub, req.body)));
   api.get("/jobs", (_req, res) => res.json(gate.listJobs()));
+  // One dashboard per reviewer role: manager, risk, owner. Needs a NamoID session (R0) and the role (R11).
+  api.get("/dashboards/:role", (req, res) => res.json(gate.dashboard(req.user.sub, req.params.role)));
   api.post("/jobs", (req, res) => res.status(201).json(gate.submitJob(req.user.sub, req.body)));
   // The UI gets the newest events (default 500); the export below stays complete.
   api.get("/history", (req, res) => res.json(gate.history({ ...req.query, limit: req.query.limit ?? 500 })));

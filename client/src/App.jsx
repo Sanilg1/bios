@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Login } from "./views/Login.jsx";
 import { RequestView } from "./views/RequestView.jsx";
-import { ReviewView } from "./views/ReviewView.jsx";
 import { GrantsView } from "./views/GrantsView.jsx";
 import { HistoryView } from "./views/HistoryView.jsx";
 import { BreakItView } from "./views/BreakItView.jsx";
 import { DemoView } from "./views/DemoView.jsx";
+import { DASHBOARDS, Dashboard, dashboardCount } from "./views/Dashboards.jsx";
 
 const TABS = [
   { id: "request", label: "Request access" },
-  { id: "review", label: "Review queue" },
+  ...DASHBOARDS.map((d) => ({ id: d.id, label: d.label, dashboard: true })),
   { id: "grants", label: "Grants & use" },
   { id: "history", label: "History" },
   { id: "breakit", label: "Try to break it" },
@@ -19,24 +19,40 @@ const TABS = [
 
 export function App() {
   const [session, setSession] = useState(null);
-  const [tab, setTab] = useState("request");
-  const [data, setData] = useState({ meta: null, resources: [], requests: [], grants: [], jobs: [] });
+  const [tab, setTabState] = useState(() => tabFromHash());
+  const [data, setData] = useState({ meta: null, resources: [], requests: [], grants: [], jobs: [], dashboards: {} });
   const [extendFrom, setExtendFrom] = useState(null);
+  // Reviewer roles of the signed-in user, so refresh() only asks for dashboards they can open.
+  const rolesRef = useRef([]);
+
+  // Each tab has its own link (#manager, #risk, #owner, …) so a reviewer can open their dashboard directly.
+  const setTab = useCallback((id) => {
+    setTabState(id);
+    if (window.location.hash !== `#${id}`) window.location.hash = id;
+  }, []);
+  useEffect(() => {
+    const onHash = () => setTabState(tabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const loadSession = useCallback(async () => {
     const res = await api("/api/session");
-    setSession(res.data ?? { authenticated: false });
+    const next = res.data ?? { authenticated: false };
+    rolesRef.current = next.user?.roles ?? [];
+    setSession(next);
   }, []);
 
   const refresh = useCallback(async () => {
-    const [meta, resources, requests, grants, jobs] = await Promise.all(
-      ["/api/meta", "/api/resources", "/api/requests", "/api/grants", "/api/jobs"].map((p) => api(p)),
-    );
+    const reviewerRoles = DASHBOARDS.map((d) => d.id).filter((role) => rolesRef.current.includes(role));
+    const paths = ["/api/meta", "/api/resources", "/api/requests", "/api/grants", "/api/jobs", ...reviewerRoles.map((role) => `/api/dashboards/${role}`)];
+    const [meta, resources, requests, grants, jobs, ...boards] = await Promise.all(paths.map((p) => api(p)));
     if (meta.status === 401) {
       setSession({ authenticated: false });
       return;
     }
-    setData({ meta: meta.data, resources: resources.data, requests: requests.data, grants: grants.data, jobs: jobs.data });
+    const dashboards = Object.fromEntries(reviewerRoles.map((role, i) => [role, boards[i].ok ? boards[i].data : null]));
+    setData({ meta: meta.data, resources: resources.data, requests: requests.data, grants: grants.data, jobs: jobs.data, dashboards });
   }, []);
 
   useEffect(() => {
@@ -64,8 +80,8 @@ export function App() {
     ...data,
     demoMode: session.demoMode,
     refresh: async () => {
-      await refresh();
       await loadSession();
+      await refresh();
     },
     startExtension: (grant) => {
       setExtendFrom(grant);
@@ -89,11 +105,22 @@ export function App() {
         </div>
       </section>
       <nav className="tabs">
-        {TABS.filter((t) => !t.demoOnly || session.demoMode).map((t) => (
-          <button key={t.id} className={tab === t.id ? "tab active" : "tab"} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
+        {TABS.filter((t) => !t.demoOnly || session.demoMode).map((t) => {
+          const locked = t.dashboard && !user.roles.includes(t.id);
+          const count = t.dashboard && !locked ? dashboardCount(data.dashboards[t.id]) : 0;
+          return (
+            <button
+              key={t.id}
+              className={`tab ${tab === t.id ? "active" : ""} ${locked ? "locked" : ""}`}
+              onClick={() => setTab(t.id)}
+              title={locked ? `Needs the ${t.id} role` : undefined}
+            >
+              {t.label}
+              {count > 0 && <span className="badge" aria-label={`${count} waiting`}>{count}</span>}
+              {locked && <span className="lock"> · locked</span>}
+            </button>
+          );
+        })}
       </nav>
       <div className="view">
         {!data.meta ? (
@@ -101,7 +128,7 @@ export function App() {
         ) : (
           <>
             {tab === "request" && <RequestView ctx={ctx} extendFrom={extendFrom} clearExtend={() => setExtendFrom(null)} />}
-            {tab === "review" && <ReviewView ctx={ctx} />}
+            {DASHBOARDS.some((d) => d.id === tab) && <Dashboard key={tab} role={tab} ctx={ctx} />}
             {tab === "grants" && <GrantsView ctx={ctx} />}
             {tab === "history" && <HistoryView ctx={ctx} />}
             {tab === "breakit" && <BreakItView />}
@@ -111,6 +138,11 @@ export function App() {
       </div>
     </Shell>
   );
+}
+
+function tabFromHash() {
+  const id = window.location.hash.slice(1);
+  return TABS.some((t) => t.id === id) ? id : "request";
 }
 
 function Shell({ children }) {

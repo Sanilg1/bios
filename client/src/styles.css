@@ -137,3 +137,22 @@ summary { cursor:pointer; font-size:13px; font-weight:600; }
 .persona span { font-size:12.5px; color:var(--muted); }
 
 @media (max-width:700px) { header.top,footer { align-items:flex-start; flex-direction:column; } .grid.two { grid-template-columns:1fr; } }
+
+/* Reviewer dashboards */
+.tab .badge { display:inline-block; min-width:20px; margin-left:7px; padding:0 6px; border-radius:10px; background:var(--acid); color:var(--ink); font-size:12px; line-height:20px; text-align:center; }
+.tab.locked { color:var(--muted); font-weight:600; }
+.tab.locked.active { color:#fff; }
+.tab .lock { font-size:12px; font-weight:600; }
+.dash-head { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; flex-wrap:wrap; }
+.dash-head p { margin:0; max-width:60ch; }
+.tiles { display:flex; gap:10px; flex-wrap:wrap; }
+.tile { display:grid; gap:2px; min-width:104px; padding:10px 12px; border:1px solid var(--line); border-radius:4px; background:var(--paper); }
+.tile.hot { border:2px solid var(--ink); background:#fbfbf6; }
+.tile-n { font-size:26px; font-weight:850; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+.tile-label { font-size:12px; color:var(--muted); font-weight:600; }
+.dash-section { margin:22px 0 10px; }
+.denial { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; padding:8px 0; border-top:1px solid #eeece5; font-size:14px; }
+.denial:first-of-type { border-top:0; }
+.denial .rule { background:var(--no-bg); color:var(--no); }
+.gpu-meter { display:inline-flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums; }
+.gpu-meter progress { width:90px; }

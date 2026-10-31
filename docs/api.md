@@ -30,6 +30,7 @@ Denials always look like `{ allowed:false, rule:"R4", ruleTitle, receipt:"Denied
 | POST | `/api/grants/:id/extend` | anything | always R8 (logged) |
 | POST | `/api/use` | `{ credential, resourceId, purpose, input }` → `{ output, banner, receipt }` | R4, R6, R7, R13 |
 | GET | `/api/jobs` | | |
+| GET | `/api/dashboards/:role` | `role` = `manager`, `risk` or `owner` → `{ actionable, yours, otherSlot, decidedByYou }`, plus `activeGrants`, `runningJobs`, `recentDenials` for risk and `resources`, `activeGrants` for owner | R11 without the role (logged); 404 for an unknown role |
 | POST | `/api/jobs` | `{ credential, gpus, purpose, image, hours }` | R4, R5, R6, R7, R10, R12, R13 |
 | GET | `/api/history` | query `requestId`, `resourceId`, `grantId`, `limit` (newest N; default 500, max 5000) | |
 | GET | `/api/history/export` | same filters, never limited | JSON download |

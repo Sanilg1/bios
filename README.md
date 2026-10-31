@@ -31,7 +31,7 @@ Each line of the [challenge](https://github.com/namoidhq/namoid-challenges/blob/
 | NamoID Hosted Auth as the sign-in system, not social login | Confidential web app: the Express server runs OIDC Authorization Code + S256 PKCE with `@namoidhq/js`, validates the ID token and UserInfo `sub`, then issues its own `HttpOnly` session. Tokens never reach the browser. Every user is keyed by NamoID `sub`, never email. | [server/auth/namoid.js](server/auth/namoid.js) | T7: no session → 401 (R0) · break-it "no session" |
 | Requester, manager, risk reviewer and resource owner authenticate | All four sign in through NamoID; roles are an app-side table keyed by `sub`. Mapped to a college: student, faculty guide, IT/ethics, HPC admin. | [server/policy/catalog.js](server/policy/catalog.js), [engine.js](server/policy/engine.js) | Four personas in local dev |
 | A request names a mock model or dataset, a purpose, a duration and risk controls | Request form with purposes from a fixed list (each resource allows only some), duration ≤ 30 days, controls, and a justification. We added a **mock H100 pool**, which also takes a GPU count. | [RequestView.jsx](client/src/views/RequestView.jsx), `createRequest` in [engine.js](server/policy/engine.js) | Purpose not allowed / too long → R12 |
-| Required reviewers can approve, narrow or reject | Three required slots: manager, risk reviewer, resource owner. Any reject ends the request. Narrowing can only **shrink** scope (purposes, days, GPUs) or **add** controls. Every decision needs a reason. | [ReviewView.jsx](client/src/views/ReviewView.jsx), `review` in [engine.js](server/policy/engine.js) | T3 · break-it "widen while narrowing" (R3) |
+| Required reviewers can approve, narrow or reject | Three required slots: manager, risk reviewer, resource owner. Any reject ends the request. Narrowing can only **shrink** scope (purposes, days, GPUs) or **add** controls. Every decision needs a reason. | [Dashboards.jsx](client/src/views/Dashboards.jsx), `review` and `dashboard` in [engine.js](server/policy/engine.js) | T3 · break-it "widen while narrowing" (R3) |
 | Approved access activates and expires automatically | The grant is issued the moment the last slot approves. Status (`active` / `expired` / `revoked`) is **computed from the clock** on every read and use, so there's no cron job to miss. | `grantStatus` in [engine.js](server/policy/engine.js) | T2: active at `expiresAt − 1ms`, expired at `expiresAt` |
 | Show active grants and decision history | Grants view with time remaining and mock jobs; an append-only history of every allow **and** deny, each with a plain-English receipt, filterable and exportable as JSON | [GrantsView.jsx](client/src/views/GrantsView.jsx), [HistoryView.jsx](client/src/views/HistoryView.jsx) | [samples/access-history.json](samples/access-history.json) · T8 |
 
@@ -59,7 +59,7 @@ Each line of the [challenge](https://github.com/namoidhq/namoid-challenges/blob/
 |---|---|
 | Public repo | This repository |
 | Demo or recording | Live demo and recording: links in [Community project metadata](#community-project-metadata) |
-| Tests for separation of duties, expiry, narrowed scope and emergency revocation | T1, T2, T3 and T4 in [test/engine.test.js](test/engine.test.js); 47 tests in total (`npm test`). [scripts/mutation-check.mjs](scripts/mutation-check.mjs) removes each rule in turn and confirms a test fails: [report](samples/mutation-report.md). |
+| Tests for separation of duties, expiry, narrowed scope and emergency revocation | T1, T2, T3 and T4 in [test/engine.test.js](test/engine.test.js); 52 tests in total (`npm test`). [scripts/mutation-check.mjs](scripts/mutation-check.mjs) removes each rule in turn and confirms a test fails: [report](samples/mutation-report.md). |
 | Sample access history | [samples/access-history.json](samples/access-history.json) (`npm run sample-history`) |
 | Stop after six hours and name the first real resource | [H100 GPU time on our college cluster](#first-real-resource-this-could-govern) |
 
@@ -156,6 +156,7 @@ Render's free tier sleeps after about 15 idle minutes, and the first request the
 
 - **Sign-in** through NamoID Hosted Auth (server-side OIDC + PKCE), with the session, refresh and logout flows from the official example.
 - **Requests:** a mock model, dataset or **mock H100 pool**, with enumerated purposes, a duration (≤ 30 days), risk controls, a GPU count for compute, and a justification.
+- **Three reviewer dashboards**, one per role: **Manager** (`/#manager`), **Risk reviewer** (`/#risk`) and **Resource owner** (`/#owner`). The server builds each one only for a NamoID-signed-in user holding that role; anyone else gets R11, and the attempt is logged. Each shows what is waiting on *you*, sets apart your own requests (R1) and ones where you already hold another slot (R2), and lists what you decided. The risk dashboard adds live grants with emergency revoke, running jobs and recent denials. The owner dashboard shows only the resources you own, with live grants and mock GPU use.
 - **Review** by three required slots (manager, risk reviewer, resource owner). Any reject ends the request. **Narrowing** can only shrink scope (purposes, days, GPUs) or add controls, and every decision needs a reason.
 - **Separation of duties:** you can't review your own request (even holding every role), one person fills one slot, and the owner slot needs the resource's actual owner.
 - **Automatic activation and expiry:** status is computed from the clock on every read and use, so there's no cron job to miss. Expiry is immutable.
@@ -165,7 +166,7 @@ Render's free tier sleeps after about 15 idle minutes, and the first request the
 - **Active grants + decision history:** an append-only audit log of every allow *and* deny, each with a **decision receipt** naming its rule (R0–R13). Exportable as JSON.
 - **Try to break it:** ten one-click attacks run against a fresh sandbox copy of the app (same routes, same engine) and show the rule that blocked each.
 - **Advisory confidence score:** built only from in-app behaviour, shown with its reasons, and starts neutral at 50 ("No history yet"). It **never** changes who reviews or what is granted, and a test proves it.
-- **Tests:** 47 tests covering T1–T10 plus session and storage hardening, including separation of duties, expiry, narrowed scope and emergency revocation. A mutation check shows every rule is guarded by at least one failing test.
+- **Tests:** 52 tests covering T1–T11 plus session and storage hardening, including separation of duties, expiry, narrowed scope and emergency revocation. A mutation check shows every rule is guarded by at least one failing test.
 
 ## First real resource this could govern
 
