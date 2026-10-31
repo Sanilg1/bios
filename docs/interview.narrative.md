@@ -1,153 +1,161 @@
-# Team Netra — Interview Narrative
+# Interview narrative: Team Netra
 
-**Responsible AI Access Gate** · BIOS Hackathon, FORGE track · NamoID brief `responsible-ai-access-gate`
-
-> How we tell the story, how every line of the problem statement maps to what we built, and how we answer the hard questions.
-> Speakers: **A** = auth & security, **B** = policy engine, **C** = UI, **D** = story & ship. Each person presents their own piece.
-
----
-
-## 1. The 20-second version
-
-> Access to powerful AI shouldn't come from a permanent key someone pasted in a chat.
-> We built a gate where every request states **what** you need, **why**, and **for how long**. Three people sign off, the access expires on its own, works only for the approved purpose, and can be killed in one click. Every decision comes with a receipt.
-> And approval is never the same as safety. We say that on every screen.
+> **Responsible AI Access Gate** for the NamoID FORGE brief (`responsible-ai-access-gate`).
+> Live: https://netra-gate.vercel.app · Repo: https://github.com/Sanilg1/bios · Slides: the "Netra: Responsible AI Access Gate" deck.
+>
+> Speakers: **A** = auth & security, **B** = policy engine, **C** = UI and dashboards, **D** = story and shipping. Each person presents their own piece. Put names here: A [name], B [name], C [name], D [name].
 
 ---
 
-## 2. The story
+## 1. The story (60 seconds, D)
 
-### Act 1: Maya, from the brief *(D tells this)*
+**Maya, from the brief.** Maya needs a sensitive model for two weeks of evaluation. Today she'd get a permanent API key. The project ends; the key keeps working. Nobody wrote down why she had it, and nobody remembers to take it back.
 
-Maya needs a sensitive model for a two-week evaluation. Today she'd get a **permanent API key**:
+**Kabir, from our campus.** Kabir is a final-year student who needs H100 GPUs for his thesis. On our campus, GPU time runs on shared logins and first-come booking. Nobody knows who ran what, or for how long.
 
-- nobody asked *why*
-- nobody really *approved* it
-- it *never expires*
-- it works for *anything*
-- if something goes wrong, there's *no off-switch* and *no record*
-
-It's the office master key handed out because someone needed the meeting room once.
-
-### Act 2: Kabir, from our own campus *(D tells this)*
-
-Kabir is a final-year student. He needs H100 GPUs for a fine-tuning project. On our college cluster today:
-
-- the group **shares one login**, so nobody knows who ran which job
-- booking is **first-come-first-served**, or "whoever knows the admin", with no time limit
-
-> *"[Real quote from our cluster admin goes here]"*
-
-Maya's problem and Kabir's problem are the **same problem**: access to a powerful AI resource with no purpose, no reviewer, and no end date.
-
-### Act 3: The gate *(live demo, everyone)*
-
-**Maya's path**
-1. Maya signs in through **NamoID Hosted Auth** as herself. There are no shared accounts. *(A)*
-2. She requests `sentinel-eval-mock` for **evaluation + internal research, 14 days**. *(C)*
-3. She tries to approve her own request. **Blocked**, with the receipt: *"R1: you can't review your own request."* *(B)*
-4. The reviewers see her advisory confidence score: *"50, no history yet"*. Her faculty guide approves. The risk reviewer **narrows** the request to **7 days, evaluation only, no export**. The resource owner approves. *(C)*
-5. She uses her temporary mock key for evaluation. ✅ It works, and the receipt says: *"Authorized under these conditions. This does not mean the use is safe."* *(B)*
-6. She tries internal research. ❌ *R4: purpose not approved.*
-7. We jump the clock forward 8 days. ❌ *R6: expired.* There is no "extend" button. More time means a new request and a full review.
-
-**Kabir's path (mock H100 pool)**
-8. Kabir asks for **8 H100s for 7 days**. Risk narrows it to **2 GPUs, 3 days, no internet access**. *(C)*
-9. He submits a 4-GPU job. ❌ *R5.* He submits a 2-GPU job, and it runs (fake progress bar).
-10. The risk reviewer hits **emergency revoke**. The running job is **killed instantly**, the next job is refused, and his score drops with the reason shown. *(B)*
-
-**Then we hand the judges the attack panel**
-11. **"Try to break it."** Ten one-click attacks. Every one is blocked by the server, and each shows the rule it hit. *(A)*
-12. The history timeline, with a receipt on every decision, exported as our sample access history. *(D)*
-
-### Act 4: What's next *(D)*
-
-The first real thing we'd govern: **H100 time on our college cluster**. Same roles, same rules. The gate would issue real scheduler bookings instead of mock jobs. We also tell you upfront what we *can't* verify (§6).
+**What we built.** A gate with **no permanent keys**. You ask for exactly what you need, in your own words, for a set time. Three different people review it. The access starts and ends on its own, works only for what was approved, and can be stopped in one click. Every yes and every no comes with a receipt.
 
 ---
 
-## 3. Problem statement → how we solve it
+## 2. The brief, and how we solve it
 
-| Problem statement says | What we built | Where | How we prove it |
-|---|---|---|---|
-| *"Start with the official template"* | Repo created from the NamoID template, `npm run setup` run for Team Netra, `npm run check` passes in CI | repo root | CI badge / `npm run check` |
-| *"Use NamoID Hosted Auth as the application's sign-in system. Not social login."* | Confidential web app. Express server runs OIDC + PKCE, validates tokens, creates its own `HttpOnly` session. The browser never sees a token. Users are keyed by NamoID `sub`, never by email. | FR-1 | T7: no session → 401. Live sign-in in the demo. |
-| *"Requester, manager, risk reviewer, and resource owner authenticate"* | Four roles in an app-side role table keyed by `sub`, with test accounts for each. Also mapped to a college: student, faculty guide, IT/ethics, HPC admin. | FR-1, §3 | Demo with 4 accounts |
-| *"A request identifies a mock model or dataset, purpose, duration, and risk controls"* | Request form with an enumerated purpose list, max 30 days, and selectable controls. The **mock H100 pool** adds a GPU count. | FR-2 | API rejects purposes the resource doesn't allow |
-| *"Required reviewers can approve, narrow, or reject"* | Three required slots. Any reject rejects the request. Narrowing can **only shrink** scope (time, purposes, GPUs) or add controls. | FR-3 | T3 narrowed scope · break-it: "widen while narrowing" (R3) |
-| *"Approved access activates and expires automatically"* | Status is **computed from the clock** on every read and use, so it doesn't depend on a background job. Expiry is immutable. | FR-5 | T2 expiry |
-| *"Show active grants and decision history"* | Active-grants view with time remaining. Append-only timeline with a **receipt** on every allow and deny. JSON export. | FR-9, FR-10 | `samples/access-history.json` |
-| *"Prevent self-approval"* | Separation of duties per request: the requester can't fill any slot, even if they hold the role, and one person fills one slot. | FR-4 | T1 · break-it R1, R2 |
-| *"Prevent use outside the approved-purpose simulation"* | Every use names a purpose, and the server checks it against the grant. GPU jobs are also capped by the granted GPU count. | FR-6 | T6 · T3 · break-it R4, R5 |
-| *"Prevent silent extensions"* | There is no extend button and no endpoint that edits expiry. An extension is a **new linked request** with a full review. | FR-7 | T5 · break-it R8 |
-| *"Prevent access after revocation"* | Emergency revoke is immediate, needs a reason, and kills running mock jobs. Revoked grants never come back. | FR-8 | T4 · break-it R7 |
-| *"Use mock models, datasets, credentials, and outputs"* | Everything is fake: `*-mock` models, `SYNTHETIC` datasets, `mock_key_…` credentials, fake H100 jobs | §5 | Banner on every screen |
-| *"Do not imply that approval makes use safe"* | Built into the product: every allow receipt says *"authorized, not safe"*, and we openly state what we can't verify | FR-10, §6 below | Visible in demo |
-| *"Tests: separation of duties, expiry, narrowed scope, emergency revocation"* | T1–T10 using Node's built-in runner and an injectable clock. **We broke each rule on purpose and confirmed a test caught it.** | §8 | `npm test` · DECISIONS.md |
-| *"Demo or recording"* | Both: a live link (judges try the break-it panel) and a 3-min recording | D10 | Links in README |
-| *"Sample access history"* | Exported timeline with receipts | FR-9 | `samples/access-history.json` |
-| *"Stop after six hours and identify the first real resource"* | We stopped at six hours. First resource: **H100 time on our college cluster**, with a mock-to-real plan. | §15 | README |
+| The brief says | What we built | Where to see it |
+|---|---|---|
+| Start from the official template | Repo created from the NamoID template; `npm run check` passes | repo root |
+| NamoID Hosted Auth as the sign-in, not social login | Server-side OIDC + S256 PKCE with `@namoidhq/js`; ID token and UserInfo `sub` checked; the browser only gets an HttpOnly cookie | Sign in on the live site |
+| Requester, manager, risk reviewer and owner authenticate | All four sign in through NamoID. Everyone is a requester; reviewer roles come from the operator's role directory, matched on a NamoID-verified email. Nobody can pick their own role | Four test accounts, one per role |
+| A request names a mock model or dataset, purpose, duration and risk controls | Mock models, synthetic datasets and a mock H100 pool. **Purposes are free text** in the requester's own words (up to 3), plus days and controls | My access → Request access |
+| Reviewers can approve, narrow or reject | Three required slots; any reject ends it; narrowing can only shrink (R3); every decision needs a reason | Manager, Risk reviewer, Resource owner dashboards |
+| Access activates and expires automatically | Status computed from the clock on every call; expiry can't be edited | My access → My access table |
+| Show active grants and decision history | Each person's dashboards plus an append-only history with a receipt on every decision, scoped to what you may see | History tab, Export JSON |
+| Prevent self-approval | R1 (even holding every role), R2 (one person, one slot) | Step 3 of the demo |
+| Prevent use outside the approved purpose | R4 (purpose must match an approved one), R5 (GPU cap), R10 (approved images) | Step 6 of the demo |
+| Prevent silent extensions | R8: no way to edit expiry; more time = new request with full review | "Need more time?" button |
+| Prevent access after revocation | R7: instant, kills running jobs, permanent | Step 7 of the demo |
+| Mock everything; don't imply approval = safe | Everything is fake; every approval receipt says "This does not mean the use is safe" | Banner on every screen |
+| Tests: separation of duties, expiry, narrowed scope, emergency revocation | T1–T4 of 63 tests; a mutation check proves all 18 protections are tested; `npm run e2e:demo` runs the whole flow with four real NamoID test users | `npm test` |
+| Sample access history | `samples/access-history.json` | repo |
+| Stop after six hours; name the first real resource | H100 time on our college cluster | Section 5 |
 
 ---
 
-## 4. What we added beyond the brief, and why
+## 3. What only we built
 
 | Addition | Why it matters |
 |---|---|
-| **Decision receipts** | Every yes or no explains itself and cites a rule. Nobody is left wondering *"why was I denied?"*, and auditors get the *why*, not just the *what*. |
-| **"Try to break it" panel** | Most teams *claim* their rules work. We let judges attack ours. It hits the real API with no bypass, and each attack matches an automated test. |
-| **Mock H100 pool** | Shows the gate works beyond models and datasets, for the scarcest AI resource there is. Adds GPU-count narrowing and a live job kill. |
-| **Advisory confidence score** | Gives reviewers context from past behaviour, with guardrails (§5). |
+| **Try to break it** | Judges attack the real app: ten one-click attacks against a fresh copy, each blocked with its rule. The same list runs as tests. |
+| **Independent dashboards, enforced by the server** | Each role sees its own dashboard; a requester can't see anyone else's requests, grants, jobs or history, because the server filters every list. |
+| **Mock H100 pool** | The scarcest AI resource: GPU-count narrowing, approved images only, and revoke kills running jobs. |
+| **Confidence score** | Credit-style context for reviewers, always with its reasons, and a test proves it can never decide. |
+| **Free-text purposes, still enforced** | Fits real requests, yet use must name an approved purpose exactly (case and spacing ignored). |
+| **Receipts** | Every allow and denial explains itself and names its rule. |
+| **Tests that bite** | We removed each protection on purpose and checked a test failed: 18 out of 18. |
 
----
-
-## 5. The confidence score: built responsibly
-
-This is a responsible-AI challenge, so we treated our own scoring feature as something that needs governing too.
+### Score guardrails
 
 | Risk with a credit-style score | Our guardrail |
 |---|---|
-| A score quietly replacing human judgement | **Advisory only.** It never approves, rejects, narrows, or skips a reviewer. A test proves a score below 20 and one above 60 get identical reviews and grants. |
-| A black-box number | Always shown **with its reasons**, e.g. *"+5 grant #12 ended cleanly"* |
-| Punishing newcomers | New users start **neutral at 50**, labelled *"No history yet"* |
-| Bias from identity data | Built **only** from in-app behaviour, never name, email, department, year, or profile data |
-| Being judged in secret | Requesters can see their own score and why |
+| Replacing human judgement | **Advisory only.** It never approves, rejects, narrows or skips a reviewer. A test proves a low and a high score get identical reviews and grants. |
+| A black-box number | Always shown **with its reasons**, e.g. "−20 grant_4 was emergency-revoked" |
+| Punishing newcomers | Starts **neutral at 50**, labelled "No history yet" |
+| Bias from identity data | Built **only** from behaviour in the app: never name, email or department |
+| Being judged in secret | Everyone sees their own score and why, on My access |
+
+Inputs: +2 approved exactly as asked, +5 grant ended cleanly, +3 / −3 for using or wasting approved GPU-hours, −3 per refused use, −20 per emergency revocation.
+
+---
+
+## 4. The demo workflow
+
+### Before you present (10 minutes before)
+
+1. **Wake the server.** Open https://netra-gate.vercel.app once. Render's free tier sleeps; the first load can take about 30 seconds, and waking resets the data to the sample story.
+2. **Get fresh codes.** NamoID Console → bios hackathon → **Test** → Users → Test users → key icon, for each of the four accounts. Codes last one hour.
+3. **Open four browser windows**, each in its own profile or incognito window, and sign each account in **once**. Stay signed in: NamoID pauses sign-ins after too many attempts from one network.
+
+| Window | Account | Role |
+|---|---|---|
+| 1 | `requester+namoid_test_ew4pufuu@test.namoid.in` | Requester |
+| 2 | `manager+namoid_test_zedaguvc@test.namoid.in` | Manager |
+| 3 | `risk.reviewer+namoid_test_649shn79@test.namoid.in` | Risk reviewer |
+| 4 | `res.owner+namoid_test_4ya965sp@test.namoid.in` | Resource owner and admin |
+
+4. Check each window shows the right tabs: requester sees **My access**, **History** and **Try to break it**; each reviewer also sees **their own** dashboard tab; the owner also sees **Admin**.
+
+### The three minutes
+
+| # | Who | Window | Click | What to say |
+|---|---|---|---|---|
+| 1 | A | Requester | Already signed in: point at "signed in through NamoID", the profile and the score | "NamoID Hosted Auth is the only way in. Everyone is their NamoID ID." |
+| 2 | C | Requester | My access → Resource **Sentinel**. Purpose: "Evaluate refusal behaviour on synthetic prompts". 7 days, tick **no-export**, add a reason → **Submit for review** | "Purpose in your own words. The receipt shows it needs all three reviewers." |
+| 3 | B | Requester | Show the request in **My requests**: three slots waiting. (Optional: the History tab shows the attempt log.) Then open **Try to break it → Approve your own request** | "You can't review your own request, even holding every role: R1." |
+| 4 | C | Manager | **Manager** tab → the new card → reason → **Approve** | "Each reviewer has their own dashboard. The receipt stays on screen." |
+| 5 | C | Risk | **Risk reviewer** tab → the card → **Narrow…** → 7 → 3 days → reason → **Confirm narrow** | "Risk can only shrink scope, never widen it: R3." |
+| 6 | C | Owner | **Resource owner** tab → the card → reason → **Approve** | "All three decided: the grant is issued and starts now." |
+| 7 | B | Requester | My access → the use console → pick the approved purpose → **Call mock resource**. Then **Something else…** → "Train a competitor model" → call again | "Approved purpose works, and even the approval says it doesn't mean safe. Anything else: R4." |
+| 8 | B | Risk | **Risk reviewer** tab → Live grants → **Emergency revoke** → reason. Then in the requester window, call again | "Instant and permanent: R7. On GPUs it also kills running jobs; Kabir's sample grant shows that." |
+| 9 | A | Any | **Try to break it** → **Run all** | "Ten attacks, each blocked by the server, each naming its rule. The same list is our test suite." |
+| 10 | D | Owner | **History** → filter Denied → **Export JSON** | "Every decision, with its receipt, in an append-only history." |
+
+**Optional extras if time allows:**
+- **Owner** tab: GPU use on the H100 pool, with Arjun's running job from the sample data.
+- **Admin** tab: People shows everyone who signed in and their roles, which come only from the directory; **Simulated time → +8 days** makes grants expire on screen (R6). Everyone sees a notice while it's on.
+- Requester → an expired grant → **Need more time?** opens a new linked request: there is no extend button (R8).
+
+### If something goes wrong
+
+- **"Too many attempts" on NamoID:** stop signing in, wait about 30 minutes, use the windows that are already signed in.
+- **The site is slow to load:** Render is waking up; wait 30 seconds.
+- **Anything else:** play the recording, or show `npm run e2e:demo`, which runs this same story with the four accounts.
+
+---
+
+## 5. First real resource
+
+**H100 GPU time on our college cluster.** The four roles map directly: student (requester), faculty guide (manager), IT security or ethics (risk reviewer), HPC admin (resource owner). For real, approval would create a scheduler booking (for example a Slurm reservation) for exactly the approved GPUs and window, revoke would cancel the jobs, and roles would come from the university's directory.
 
 ---
 
 ## 6. What we're honest about
 
-- **Approval ≠ safety.** The gate controls *access*, not *outcomes*.
-- **We can't verify what a GPU job actually does.** A job approved for "evaluation" could secretly be training. Approved images, no internet access, and GPU caps *reduce* that risk but don't remove it.
-- **Revoking a grant is not revoking a NamoID session.** They're separate layers, and the README explains both.
-- **Demo-only time travel.** The clock control used to show expiry exists only in demo mode, and every use is logged.
-- **Mock to real needs real work:** a credential broker, scheduler integration, durable storage, and an incident process behind "emergency revoke."
-- **We stopped at six hours.** What's missing is listed under Known limitations.
+- **Approval isn't safety.** The gate controls *access*, not *outcomes*.
+- **We can't verify what a GPU job really does.** A job approved for evaluation could secretly be training. Approved images, no internet and GPU caps reduce that risk; they don't remove it.
+- **Revoking a grant isn't revoking a NamoID session.** They're separate layers.
+- **Roles are configuration.** The role directory is a setting; a production version would manage it in an admin UI with durable storage.
+- **State lives in one process.** Fine for the demo; Render's free tier resets it when it sleeps.
+- **Simulated time is a demo tool.** Admin only, logged, and announced to everyone while on.
+- **Mock to real needs real work:** a credential broker, scheduler integration, durable storage and an incident process behind emergency revoke.
 
 ---
 
 ## 7. Likely judge questions
 
 **"Isn't this just an approval workflow?"**
-An approval workflow records that someone said yes. Our gate **enforces** what they said yes *to*: purpose, time, GPU count, and revocation are checked by the server on every use. The break-it panel shows it.
+An approval workflow records that someone said yes. Our gate **enforces** what they said yes *to*: purpose, time, GPU count and revocation are checked by the server on every use. Try to break it shows it.
 
 **"Why is NamoID essential here, not decoration?"**
-Separation of duties only works if you know *who* someone really is. Shared logins are half of our campus problem. NamoID gives every person their own verified identity (`sub`), and every rule, receipt, and score is tied to it. Without real identity, "you can't approve your own request" is meaningless.
+Separation of duties only works if you know *who* someone really is, and shared logins are half our campus problem. NamoID gives every person a verified identity, and every rule, receipt, score and role is tied to it. Without it, "you can't approve your own request" means nothing.
 
-**"What stops a reviewer from just approving everything?"**
-Three independent reviewers, any one of whom can reject. Narrowing is easy and visible. Every decision needs a reason and is permanently in the history. We don't pretend to fix human judgement; we make it visible and accountable.
+**"Who decides who's a reviewer?"**
+The operator, through a role directory matched on a NamoID-verified email. There is no way to pick a role in the app, and someone removed from the directory goes back to requester only. A test and the mutation check cover both.
 
-**"Why not let high-scoring users skip review?"**
-We considered it and said no. The brief requires reviewers, and letting a score override people is exactly the kind of automated decision a responsible-AI system should avoid. With another hour, we'd tier by the *request's* risk (GPU count, purpose), never by the person.
+**"Can a requester see other people's data?"**
+No. The server filters every list (requests, grants, jobs, history) to what the caller may see, and a test checks over HTTP that nothing about another person comes back. A grant's key is shown only to its holder.
+
+**"If purposes are free text, how do you enforce them?"**
+The approved wording is locked into the grant. Every use must name one of those purposes; we ignore case and spacing, nothing else. Narrowing can drop a purpose but never add or reword one.
+
+**"What stops a reviewer from approving everything?"**
+Three independent reviewers, any of whom can reject. Narrowing is easy and visible. Every decision needs a reason and stays in the history. We don't fix human judgement; we make it visible and accountable.
+
+**"Why not let high scorers skip review?"**
+We considered it and said no. Letting a score override people is exactly the automated decision a responsible-AI system should avoid. A test proves the score changes nothing.
 
 **"How do you know your tests actually work?"**
-We removed each rule's check one at a time and confirmed a test failed every time. Results are in DECISIONS.md.
+We removed each of 18 protections one at a time and checked a test failed every time. Our first version of that check had a bug that reported everything as caught; a control run exposed it, and DECISIONS.md tells that story.
 
-**"What happens at 23:59:59 on the expiry day?"**
-Status is computed from the clock on every call, so at `expires_at` the next call is denied. There's no cron job to miss. A test covers that exact boundary.
-
-**"How would this work on a real cluster?"**
-Approval would create a scheduler booking (for example a Slurm reservation) for exactly the approved GPUs and time window. Revoke would cancel the jobs and drop the booking. The roles map directly: student, faculty guide, IT/ethics, HPC admin.
+**"What happens at the exact second a grant expires?"**
+Status is computed from the clock on every call, so at `expiresAt` the next call is refused (R6). There's no background job to miss, and a test covers that exact millisecond.
 
 **"What was hardest?"**
 *(Each speaker answers for their lane, one honest sentence each.)*
