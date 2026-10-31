@@ -1,0 +1,28 @@
+# Render Blueprint for the gate API. Vercel serves the UI and forwards /api/* here (see vercel.json).
+services:
+  - type: web
+    name: netra-gate-api
+    runtime: node
+    plan: free
+    # API only: the UI is built and served by Vercel, so dev dependencies aren't needed here.
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
+      - key: APP_BASE_URL
+        value: https://netra-gate.vercel.app
+      - key: DEMO_MODE
+        value: "true"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SESSION_SECRET
+        generateValue: true
+      # The Client ID is public (it appears in every sign-in URL). The secret is entered in the Render dashboard.
+      - key: NAMOID_CLIENT_ID
+        value: namoid_client_test_tiYU76gWGBbdaLdnxyl0C5jPj2gt1GrB
+      - key: NAMOID_CLIENT_SECRET
+        sync: false

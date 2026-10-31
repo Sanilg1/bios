@@ -15,7 +15,7 @@ const port = Number(process.env.PORT ?? "4000");
 const demoMode = flag("DEMO_MODE");
 const devLogin = flag("DEV_LOGIN");
 const dataFile = process.env.DATA_FILE ?? "data/state.json";
-// Proxy hops in front of Express: 1 locally or on Railway alone, 2 behind Vercel → Railway.
+// Proxy hops in front of Express whose X-Forwarded-For we trust (1 locally and on Render).
 const trustProxy = Number(process.env.TRUST_PROXY ?? "1");
 if (!Number.isInteger(trustProxy) || trustProxy < 0) throw new Error("TRUST_PROXY must be a whole number of proxy hops");
 

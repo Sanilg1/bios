@@ -114,7 +114,7 @@
   <p class="lede">How Team Netra's answer to the NamoID <em>responsible-ai-access-gate</em> challenge fits together. Temporary, purpose-bound, reviewed access to mock models, datasets and a mock H100 pool, with NamoID Hosted Auth as the only sign-in.</p>
   <div class="meta">
     <span class="chip">UI <b>Vercel</b> · netra-gate.vercel.app</span>
-    <span class="chip">API <b>Railway</b> · one Node 24 process</span>
+    <span class="chip">API <b>Render</b> · one Node 24 process</span>
     <span class="chip">Sign-in <b>NamoID Hosted Auth</b> · OIDC + S256 PKCE</span>
     <span class="chip">Rules <b>R0–R13</b> · 47 tests</span>
   </div>
@@ -126,7 +126,7 @@
     <h2>Deployment</h2>
     <figure>
       <div class="scroll">
-        <svg viewBox="0 0 960 300" role="img" aria-label="The browser talks only to Vercel. Vercel serves the React UI and forwards /api requests to the Express server on Railway. Railway holds the NamoID client secret and the gate state, and exchanges sign-in codes with NamoID. The browser visits NamoID only for the hosted sign-in page.">
+        <svg viewBox="0 0 960 300" role="img" aria-label="The browser talks only to Vercel. Vercel serves the React UI and forwards /api requests to the Express server on Render. Render holds the NamoID client secret and the gate state, and exchanges sign-in codes with NamoID. The browser visits NamoID only for the hosted sign-in page.">
           <defs>
             <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
             <marker id="a1b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head-accent"/></marker>
@@ -147,7 +147,7 @@
           <text x="620" y="280" text-anchor="middle" class="t-small t-accent">secrets and tokens live only here</text>
 
           <rect class="box-accent" x="520" y="120" width="200" height="80" rx="6"/>
-          <text x="620" y="155" text-anchor="middle" class="t-title">Railway · Express</text>
+          <text x="620" y="155" text-anchor="middle" class="t-title">Render · Express</text>
           <text x="620" y="176" text-anchor="middle" class="t-small">gate engine + sessions</text>
 
           <rect class="box-muted" x="545" y="222" width="150" height="40" rx="5"/>
@@ -166,7 +166,7 @@
           <line class="wire" x1="620" y1="200" x2="620" y2="218" marker-end="url(#a1)"/>
         </svg>
       </div>
-      <figcaption>The browser only ever talks to the Vercel domain, so the session cookie is first-party and the NamoID callback is <code>https://netra-gate.vercel.app/api/auth/callback</code>. The API runs as one long-lived Railway process instead of Vercel functions, because sessions and gate state are kept in memory.</figcaption>
+      <figcaption>The browser only ever talks to the Vercel domain, so the session cookie is first-party and the NamoID callback is <code>https://netra-gate.vercel.app/api/auth/callback</code>. The API runs as one long-lived Render process instead of Vercel functions, because sessions and gate state are kept in memory.</figcaption>
     </figure>
   </section>
 
@@ -180,7 +180,7 @@
             <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
           </defs>
           <text x="140" y="24" text-anchor="middle" class="t-title">Browser</text>
-          <text x="480" y="24" text-anchor="middle" class="t-title">Express on Railway</text>
+          <text x="480" y="24" text-anchor="middle" class="t-title">Express on Render</text>
           <text x="820" y="24" text-anchor="middle" class="t-title">NamoID</text>
           <line class="life" x1="140" y1="36" x2="140" y2="420"/>
           <line class="life" x1="480" y1="36" x2="480" y2="420"/>
@@ -384,7 +384,7 @@
       <table>
         <thead><tr><th>Item</th><th>Lives in</th></tr></thead>
         <tbody>
-          <tr><td>NamoID client secret</td><td>Railway environment only</td></tr>
+          <tr><td>NamoID client secret</td><td>Render environment only</td></tr>
           <tr><td>NamoID tokens</td><td>Server session only</td></tr>
           <tr><td>Browser</td><td>Opaque session cookie</td></tr>
           <tr><td>Mock grant credential</td><td>Shown to its holder, never logged</td></tr>

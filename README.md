@@ -136,33 +136,21 @@ npm run build && NODE_ENV=production npm start   # one process serves API + buil
 
 `npm run landing` still serves the template's static landing page (`index.html`) on :8080.
 
-## Deploy (Vercel + Railway)
+## Deploy (Vercel + Render)
 
 ```
-Browser ──▶ Vercel (React UI, static)  ── /api/* rewrite ──▶  Railway (Express API + gate state)
+Browser ──▶ Vercel (React UI, static)  ── /api/* rewrite ──▶  Render (Express API + gate state)
 ```
 
-Vercel serves the built UI and forwards every `/api/*` request to Railway ([vercel.json](vercel.json)). The browser only ever talks to the Vercel domain, so the session cookie is first-party and the NamoID callback lives on the Vercel URL. The API runs on Railway rather than as a Vercel function because the gate keeps sessions and state in one long-running process.
+Live UI: **https://netra-gate.vercel.app**. Vercel serves the built UI and forwards every `/api/*` request to Render ([vercel.json](vercel.json)). The browser only ever talks to the Vercel domain, so the session cookie is first-party and the NamoID callback lives on the Vercel URL. The API runs on Render rather than as a Vercel function because the gate keeps sessions and state in one long-running process.
 
 1. **Push** this repo to GitHub.
-2. **Pick the Vercel domain:** `vercel link`, then create a project (e.g. `netra-gate` → `https://netra-gate.vercel.app`).
-3. **Railway:** New project → Deploy from GitHub repo → this repo. [railway.json](railway.json) sets `npm start` and the `/api/health` health check. Under *Variables*, set:
+2. **Render:** New → Blueprint → this repo. [render.yaml](render.yaml) defines the `netra-gate-api` web service: `npm start`, the `/api/health` health check, `NODE_ENV=production`, `APP_BASE_URL`, `DEMO_MODE=true`, the public Client ID and a generated `SESSION_SECRET`. Render asks for the one secret, `NAMOID_CLIENT_SECRET`, from the NamoID Console. Production refuses to start without the NamoID and session variables, and refuses `DEV_LOGIN`.
+3. **Point Vercel at Render:** replace `RENDER_HOST` in [vercel.json](vercel.json) with the service domain (e.g. `netra-gate-api.onrender.com`), then `vercel deploy --prod`.
+4. **NamoID Console:** set the callback to `https://netra-gate.vercel.app/api/auth/callback`, and `https://netra-gate.vercel.app` as the post-logout redirect if the Console asks.
+5. **Check:** `curl https://netra-gate.vercel.app/api/health` → `{"status":"ok"}`, then sign in through NamoID.
 
-   | Variable | Value |
-   |---|---|
-   | `NODE_ENV` | `production` |
-   | `APP_BASE_URL` | the Vercel URL from step 2, no trailing slash |
-   | `SESSION_SECRET` | 48+ random characters |
-   | `NAMOID_CLIENT_ID` / `NAMOID_CLIENT_SECRET` | from the NamoID Console |
-   | `DEMO_MODE` | `true` (judges can pick roles and move the demo clock; both audited) |
-   | `TRUST_PROXY` | `2` (Vercel and Railway's edge) |
-
-   Then *Settings → Networking → Generate Domain*. Production refuses to start without the NamoID and session variables, and refuses `DEV_LOGIN`.
-4. **Point Vercel at Railway:** replace `RAILWAY_HOST` in [vercel.json](vercel.json) with the Railway domain (e.g. `bios-production.up.railway.app`), commit, then `vercel --prod`.
-5. **NamoID Console:** add the callback `https://<vercel-domain>/api/auth/callback`, and the Vercel URL as the post-logout redirect if the Console asks.
-6. **Check:** `curl https://<vercel-domain>/api/health` → `{"status":"ok"}`, then sign in through NamoID.
-
-Railway's disk resets on every redeploy, which clears requests, grants and history. To keep them, attach a Railway volume at `/app/data`.
+Render's free tier sleeps after about 15 idle minutes, and the first request then takes around 30 seconds. Waking up also resets requests, grants and history, because the free tier has no persistent disk. Open the site a minute before a demo or recording.
 
 ## What works
 
@@ -187,7 +175,7 @@ Railway's disk resets on every redeploy, which clears requests, grants and histo
 
 - The NamoID Hosted Auth flow is implemented against the official SDK and example, and the SDK reaches NamoID's servers. It still needs a real Console Client ID to complete an end-to-end sign-in; that is the first thing to configure.
 - Roles in demo mode are self-assigned (audited). Production would need an admin-managed role table.
-- State is in memory with a JSON snapshot on disk, and sessions use the in-memory `express-session` store. That's fine for a single-process demo, not for production. It's also why the API runs as one Railway process, not as Vercel functions. The audit log grows without bound in memory; `/api/history` returns only the newest 500 events (`?limit=` up to 5000), and the JSON export stays complete.
+- State is in memory with a JSON snapshot on disk, and sessions use the in-memory `express-session` store. That's fine for a single-process demo, not for production. It's also why the API runs as one Render process, not as Vercel functions. The audit log grows without bound in memory; `/api/history` returns only the newest 500 events (`?limit=` up to 5000), and the JSON export stays complete.
 - The demo clock control exists only with `DEMO_MODE=true` and logs every jump.
 - Purpose enforcement is a simulation. Callers *declare* a purpose; a real system would need technical controls behind that declaration.
 - The mock-to-real path (credential broker, scheduler integration, incident process) is designed, not built.
