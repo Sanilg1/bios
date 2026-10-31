@@ -200,6 +200,19 @@ describe("T5 no silent extensions", () => {
     assert.equal(gate.listGrants(MAYA).find((g) => g.id === next.id).status, "scheduled");
   });
 
+  test("an extension approved after the old grant expired starts now and says so; it never backdates", () => {
+    const { gate, clock } = makeGate();
+    const grant = grantFor(gate);
+    const ext = request(gate, MAYA, { extendsGrantId: grant.id });
+    clock.advance(8 * DAY);
+    approve(gate, ext.id, "manager", GUIDE);
+    approve(gate, ext.id, "risk", RISK);
+    const result = approve(gate, ext.id, "owner", IRA);
+    assert.equal(result.grant.startsAt, clock.now());
+    assert.ok(result.grant.startsAt > grant.expiresAt);
+    assert.match(result.receipt, /no access from then until .+ Extensions never backdate\./);
+  });
+
   test("a revoked grant can't be extended, and you can't extend someone else's", () => {
     const { gate } = makeGate();
     const grant = grantFor(gate);
@@ -259,6 +272,26 @@ describe("T8 receipts", () => {
     assert.throws(() => {
       first.receipt = "rewritten";
     }, TypeError);
+  });
+
+  test("history keeps the actor's name from the time of the event, even after a rename", () => {
+    const { gate } = makeGate();
+    grantFor(gate);
+    const before = gate.history().filter((e) => e.actorSub === MAYA);
+    gate.upsertUser({ sub: MAYA, name: "Maya (renamed)" });
+    const after = gate.history().filter((e) => e.actorSub === MAYA);
+    assert.ok(before.length > 0);
+    assert.deepEqual(after.map((e) => e.actorName), before.map((e) => e.actorName));
+    assert.ok(after.every((e) => e.actorName !== "Maya (renamed)"));
+  });
+
+  test("history can be limited to the newest events; without a limit it is complete", () => {
+    const { gate } = makeGate();
+    grantFor(gate);
+    const all = gate.history();
+    const newest = gate.history({ limit: 2 });
+    assert.deepEqual(newest.map((e) => e.seq), all.slice(-2).map((e) => e.seq));
+    assert.equal(gate.history({ limit: 99999 }).length, all.length);
   });
 });
 

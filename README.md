@@ -59,7 +59,7 @@ Each line of the [challenge](https://github.com/namoidhq/namoid-challenges/blob/
 |---|---|
 | Public repo | This repository |
 | Demo or recording | Live demo and recording: links in [Community project metadata](#community-project-metadata) |
-| Tests for separation of duties, expiry, narrowed scope and emergency revocation | T1, T2, T3 and T4 in [test/engine.test.js](test/engine.test.js); 40 tests in total (`npm test`). [scripts/mutation-check.mjs](scripts/mutation-check.mjs) removes each rule in turn and confirms a test fails: [report](samples/mutation-report.md). |
+| Tests for separation of duties, expiry, narrowed scope and emergency revocation | T1, T2, T3 and T4 in [test/engine.test.js](test/engine.test.js); 47 tests in total (`npm test`). [scripts/mutation-check.mjs](scripts/mutation-check.mjs) removes each rule in turn and confirms a test fails: [report](samples/mutation-report.md). |
 | Sample access history | [samples/access-history.json](samples/access-history.json) (`npm run sample-history`) |
 | Stop after six hours and name the first real resource | [H100 GPU time on our college cluster](#first-real-resource-this-could-govern) |
 
@@ -177,7 +177,7 @@ Railway's disk resets on every redeploy, which clears requests, grants and histo
 - **Active grants + decision history:** an append-only audit log of every allow *and* deny, each with a **decision receipt** naming its rule (R0–R13). Exportable as JSON.
 - **Try to break it:** ten one-click attacks run against a fresh sandbox copy of the app (same routes, same engine) and show the rule that blocked each.
 - **Advisory confidence score:** built only from in-app behaviour, shown with its reasons, and starts neutral at 50 ("No history yet"). It **never** changes who reviews or what is granted, and a test proves it.
-- **Tests:** 40 tests covering T1–T10, including separation of duties, expiry, narrowed scope and emergency revocation. A mutation check shows every rule is guarded by at least one failing test.
+- **Tests:** 47 tests covering T1–T10 plus session and storage hardening, including separation of duties, expiry, narrowed scope and emergency revocation. A mutation check shows every rule is guarded by at least one failing test.
 
 ## First real resource this could govern
 
@@ -187,7 +187,7 @@ Railway's disk resets on every redeploy, which clears requests, grants and histo
 
 - The NamoID Hosted Auth flow is implemented against the official SDK and example, and the SDK reaches NamoID's servers. It still needs a real Console Client ID to complete an end-to-end sign-in; that is the first thing to configure.
 - Roles in demo mode are self-assigned (audited). Production would need an admin-managed role table.
-- State is in memory with a JSON snapshot on disk, and sessions use the in-memory `express-session` store. That's fine for a single-process demo, not for production. It's also why the API runs as one Railway process, not as Vercel functions.
+- State is in memory with a JSON snapshot on disk, and sessions use the in-memory `express-session` store. That's fine for a single-process demo, not for production. It's also why the API runs as one Railway process, not as Vercel functions. The audit log grows without bound in memory; `/api/history` returns only the newest 500 events (`?limit=` up to 5000), and the JSON export stays complete.
 - The demo clock control exists only with `DEMO_MODE=true` and logs every jump.
 - Purpose enforcement is a simulation. Callers *declare* a purpose; a real system would need technical controls behind that declaration.
 - The mock-to-real path (credential broker, scheduler integration, incident process) is designed, not built.

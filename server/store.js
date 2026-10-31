@@ -23,10 +23,15 @@ export function snapshotter(file) {
   return (state) => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      mkdirSync(dirname(file), { recursive: true });
-      const tmp = `${file}.tmp`;
-      writeFileSync(tmp, JSON.stringify(state, null, 2));
-      renameSync(tmp, file);
+      // A failed snapshot (full disk, permissions) must not crash the gate; the next change retries.
+      try {
+        mkdirSync(dirname(file), { recursive: true });
+        const tmp = `${file}.tmp`;
+        writeFileSync(tmp, JSON.stringify(state, null, 2));
+        renameSync(tmp, file);
+      } catch (error) {
+        console.error(`State snapshot to ${file} failed: ${error.message}`);
+      }
     }, 200);
   };
 }

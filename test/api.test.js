@@ -54,6 +54,20 @@ describe("T7 auth boundary (HTTP)", () => {
     });
     assert.equal(res.status, 403);
   });
+
+  test("a cookie-carrying state change without Origin is refused unless Sec-Fetch-Site says same-origin", async () => {
+    const post = (headers) =>
+      fetch(`${sandbox.baseUrl}/api/requests`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-test-user": "persona:maya", ...headers },
+        body: JSON.stringify({ resourceId: "model:sentinel-eval-mock", purposes: ["evaluation"], durationDays: 1, controls: [], justification: "csrf" }),
+      });
+    assert.equal((await post({ cookie: "netra_gate_session=stolen" })).status, 403, "cookie, no Origin, no Sec-Fetch-Site");
+    assert.equal((await post({ cookie: "netra_gate_session=x", "sec-fetch-site": "cross-site" })).status, 403, "cross-site fetch metadata");
+    assert.equal((await post({ "sec-fetch-site": "same-site" })).status, 403, "a sibling subdomain is not our origin");
+    assert.equal((await post({ cookie: "netra_gate_session=x", "sec-fetch-site": "same-origin" })).status, 201, "same-origin fetch metadata");
+    assert.equal((await post({})).status, 201, "cookieless callers have no ambient session to forge");
+  });
 });
 
 describe("T10 break-it parity", () => {

@@ -2,6 +2,8 @@
 
 Every route except auth, `/api/health` and `/api/auth/options` needs a signed-in session. Without one: `401 { allowed:false, rule:"R0", receipt }`.
 
+State-changing requests (anything but GET/HEAD) must send our `Origin`, or `Sec-Fetch-Site: same-origin`. If a request carries a cookie and has neither, it gets `403 { error: "Invalid request origin" }`. Browsers send these headers automatically.
+
 Denials always look like `{ allowed:false, rule:"R4", ruleTitle, receipt:"Denied (R4): …" }`, with the HTTP status from the rule catalogue (`GET /api/meta` → `rules`). Allows include `allowed:true` and a `receipt`.
 
 ## Auth
@@ -29,8 +31,8 @@ Denials always look like `{ allowed:false, rule:"R4", ruleTitle, receipt:"Denied
 | POST | `/api/use` | `{ credential, resourceId, purpose, input }` → `{ output, banner, receipt }` | R4, R6, R7, R13 |
 | GET | `/api/jobs` | | |
 | POST | `/api/jobs` | `{ credential, gpus, purpose, image, hours }` | R4, R5, R6, R7, R10, R12, R13 |
-| GET | `/api/history` | query `requestId`, `resourceId`, `grantId` | |
-| GET | `/api/history/export` | same query | JSON download |
+| GET | `/api/history` | query `requestId`, `resourceId`, `grantId`, `limit` (newest N; default 500, max 5000) | |
+| GET | `/api/history/export` | same filters, never limited | JSON download |
 | GET | `/api/score/:sub` | | R11 unless you're a reviewer or the person |
 | GET | `/api/breakit` | | |
 | POST | `/api/breakit/:id` | | runs in a fresh sandbox → `{ blocked, final, transcript }` |

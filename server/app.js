@@ -48,10 +48,15 @@ export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://loca
     res.setHeader("cache-control", "no-store");
     next();
   });
-  // CSRF defence alongside SameSite=Lax: a cross-site Origin can't change state.
+  // CSRF defence alongside SameSite=Lax. Browsers send Origin on every non-GET fetch, and
+  // Sec-Fetch-Site too. A state change that carries a cookie but proves neither is refused.
+  // Cookieless callers (tests, the break-it sandbox, curl) have no ambient session to forge.
   app.use("/api", (req, res, next) => {
+    if (req.method === "GET" || req.method === "HEAD") return next();
     const origin = req.get("origin");
-    if (req.method !== "GET" && origin && origin !== appOrigin) {
+    const fetchSite = req.get("sec-fetch-site");
+    const sameOrigin = origin ? origin === appOrigin : fetchSite ? fetchSite === "same-origin" : !req.get("cookie");
+    if (!sameOrigin) {
       res.status(403).json({ error: "Invalid request origin" });
       return;
     }
@@ -107,7 +112,8 @@ export function createApp({ gate, auth, sessionSecret, appBaseUrl = "http://loca
   api.post("/use", (req, res) => res.json(gate.use(req.user.sub, req.body)));
   api.get("/jobs", (_req, res) => res.json(gate.listJobs()));
   api.post("/jobs", (req, res) => res.status(201).json(gate.submitJob(req.user.sub, req.body)));
-  api.get("/history", (req, res) => res.json(gate.history(req.query)));
+  // The UI gets the newest events (default 500); the export below stays complete.
+  api.get("/history", (req, res) => res.json(gate.history({ ...req.query, limit: req.query.limit ?? 500 })));
   api.get("/history/export", (req, res) => {
     res.setHeader("content-disposition", 'attachment; filename="access-history.json"');
     res.json({ exportedAt: new Date(gate.now()).toISOString(), note: "Mock data only. Approval ≠ safety.", events: gate.history(req.query) });

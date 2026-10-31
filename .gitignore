@@ -4,3 +4,7 @@ node_modules/
 dist/
 data/
 .mutation/
+
+.vercel
+.env*
+!.env.example

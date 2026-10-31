@@ -7,9 +7,10 @@ import { route } from "../http.js";
 
 const TRANSACTION_LIFETIME_MS = 10 * 60 * 1000;
 const REFRESH_SKEW_MS = 60 * 1000;
+const REFRESH_REUSE_MS = 30 * 1000;
 
-export function namoidProvider({ clientId, clientSecret }) {
-  const namoid = createNamoIDClient({ clientId });
+export function namoidProvider({ clientId, clientSecret, namoid = createNamoIDClient({ clientId }) }) {
+  const inflightRefresh = new Map();
   const authRateLimit = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-7", legacyHeaders: false });
 
   function mount(app, { appBaseUrl }) {
@@ -137,13 +138,25 @@ export function namoidProvider({ clientId, clientSecret }) {
     if (Date.now() < auth.expiresAt - REFRESH_SKEW_MS) return auth;
     const refreshToken = auth.tokens.refresh_token;
     if (!refreshToken) throw new Error("refresh_token_missing");
-    const refreshed = await namoid.hostedAuth.refresh({ refreshToken, clientSecret });
-    const tokens = {
-      ...refreshed,
-      refresh_token: refreshed.refresh_token ?? refreshToken,
-      id_token: refreshed.id_token ?? auth.tokens.id_token,
-    };
-    return { ...auth, tokens, expiresAt: tokenExpiry(tokens) };
+    // Single-flight per refresh token. Parallel API calls near expiry share one refresh, so a
+    // rotating provider never sees the same refresh token twice (which would kill the token family).
+    // The result is kept briefly for requests that loaded the session before it was re-saved.
+    let pending = inflightRefresh.get(refreshToken);
+    if (!pending) {
+      pending = namoid.hostedAuth.refresh({ refreshToken, clientSecret }).then((refreshed) => {
+        const tokens = {
+          ...refreshed,
+          refresh_token: refreshed.refresh_token ?? refreshToken,
+          id_token: refreshed.id_token ?? auth.tokens.id_token,
+        };
+        return { tokens, expiresAt: tokenExpiry(tokens) };
+      });
+      inflightRefresh.set(refreshToken, pending);
+      const forget = () => setTimeout(() => inflightRefresh.delete(refreshToken), REFRESH_REUSE_MS).unref();
+      pending.then(forget, () => inflightRefresh.delete(refreshToken));
+    }
+    const { tokens, expiresAt } = await pending;
+    return { ...auth, tokens, expiresAt };
   }
 
   return { name: "namoid", mount, identify };

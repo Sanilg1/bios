@@ -87,7 +87,9 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
   const nextId = (prefix) => `${prefix}_${++state.seq}`;
 
   function record(event) {
-    const entry = Object.freeze({ seq: state.audit.length + 1, at: fmt(now()), ...event });
+    // actorName is captured now, so a later profile rename can't rewrite history.
+    const actorName = event.actorSub ? nameOf(event.actorSub) : null;
+    const entry = Object.freeze({ seq: state.audit.length + 1, at: fmt(now()), actorName, ...event });
     state.audit.push(entry);
     return entry;
   }
@@ -321,7 +323,15 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
           receipt = `${slot} ${verb} ${request.id}: "${reason}".`;
           if (SLOTS.every((s) => request.reviews[s])) {
             grant = issueGrant(request, resource);
-            receipt += ` All three slots decided → grant ${grant.id} issued until ${fmt(grant.expiresAt)}. ${NOT_SAFE}`;
+            receipt += ` All three slots decided → grant ${grant.id} issued until ${fmt(grant.expiresAt)}.`;
+            if (grant.extendsGrantId) {
+              const prior = state.grants.find((g) => g.id === grant.extendsGrantId);
+              receipt +=
+                grant.startsAt === prior.expiresAt
+                  ? ` It starts when ${prior.id} ends, with no gap.`
+                  : ` ${prior.id} ended at ${fmt(prior.expiresAt)} before this was approved, so there was no access from then until ${fmt(grant.startsAt)}. Extensions never backdate.`;
+            }
+            receipt += ` ${NOT_SAFE}`;
           } else {
             const waiting = SLOTS.filter((s) => !request.reviews[s]);
             receipt += ` Still waiting on: ${list(waiting)}.`;
@@ -546,11 +556,13 @@ export function createGate({ state, clock, onChange = () => {}, newSecret = () =
   }
 
   function history(filter = {}) {
-    return state.audit
+    const events = state.audit
       .filter((e) => !filter.requestId || e.requestId === filter.requestId)
       .filter((e) => !filter.resourceId || e.resourceId === filter.resourceId)
-      .filter((e) => !filter.grantId || e.grantId === filter.grantId)
-      .map((e) => ({ ...e, actorName: e.actorSub ? nameOf(e.actorSub) : null }));
+      .filter((e) => !filter.grantId || e.grantId === filter.grantId);
+    const limit = filter.limit === undefined ? events.length : Math.min(Math.max(Math.trunc(Number(filter.limit)) || 1, 1), 5000);
+    // Entries written before actorName was recorded fall back to the current name.
+    return events.slice(-limit).map((e) => (e.actorName !== undefined ? e : { ...e, actorName: e.actorSub ? nameOf(e.actorSub) : null }));
   }
 
   function score(sub) {

@@ -44,7 +44,8 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 
 - **Secrets:** the NamoID Client Secret and session secret live only in server environment variables (`.env` is git-ignored).
 - **Tokens:** NamoID tokens live only in the server-side session. The browser gets an opaque `HttpOnly`, `SameSite=Lax` cookie (`Secure` over HTTPS).
-- **CSRF:** state-changing requests from a foreign `Origin` are rejected, in addition to `SameSite=Lax`.
+- **CSRF:** on top of `SameSite=Lax`, a state-changing request must come from our `Origin`. If it has no `Origin`, its `Sec-Fetch-Site` must say `same-origin`. If it has neither and still carries a cookie, it is refused. An outside review pointed out that our first version let a request with no `Origin` through.
+- **Token refresh:** parallel API calls near token expiry share one refresh, so NamoID never sees the same refresh token twice. Seeing it twice could end the session if NamoID rotates refresh tokens. The other review findings we fixed: snapshot write failures are logged instead of crashing the process; audit entries record the actor's name when written, so a rename can't rewrite history; and an extension approved after the old grant expired says so in its receipt instead of silently leaving a gap.
 - **CSP:** helmet sets `default-src 'self'`.
 - **Credentials:** mock credentials are shown only to the grant holder and never written to the audit log (a test checks this).
 - **Identity:** users are keyed by NamoID `sub`. Display names are cosmetic.
@@ -57,7 +58,7 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 
 ## Testing
 
-`npm test` runs 40 tests on Node's built-in runner with a fixed clock and no network:
+`npm test` runs 47 tests on Node's built-in runner with a fixed clock and no network (the table below, plus [test/hardening.test.js](test/hardening.test.js) for token refresh and snapshot failures):
 
 | Group | What it proves |
 |---|---|
@@ -67,7 +68,7 @@ Browser (React, built by Vite)  ── HttpOnly session cookie only ──▶  E
 | T4 Emergency revocation | Immediate denial, running jobs killed, logged, terminal; only risk or owner can revoke |
 | T5 No silent extensions | Expiry can't be reassigned; extension = new request + full review |
 | T6 Purpose / holder | Wrong purpose, wrong holder, wrong resource, unknown credential, unapproved image |
-| T7 Auth boundary | 401/R0 without a session over HTTP; cross-site origins rejected |
+| T7 Auth boundary | 401/R0 without a session over HTTP; cross-site origins rejected; a cookie without `Origin` or same-origin `Sec-Fetch-Site` rejected |
 | T8 Receipts | Allows say "not a safety guarantee"; history is append-only; no credentials in logs |
 | T9 Score is advisory | A score below 20 and one above 60 get identical review requirements and grants |
 | T10 Break-it parity | Every panel attack is blocked by its expected rule |
